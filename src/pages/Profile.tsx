@@ -123,8 +123,12 @@ export default function Profile() {
   const [height, setHeight] = useState(profile.heightCm ?? 0);
   const [weightInput, setWeightInput] = useState(0);
 
-  useEffect(() => setName(profile.name), [profile.name]);
-  useEffect(() => setHeight(profile.heightCm ?? 0), [profile.heightCm]);
+  useEffect(() => {
+  setName(profile.name);
+}, [profile.name]);
+  useEffect(() => {
+  setHeight(profile.heightCm ?? 0);
+}, [profile.heightCm]);
 
   const patchProfile = (patch: Partial<typeof profile>) => updateMeta((m) => ({ ...m, profile: { ...m.profile, ...patch } }));
   const sorted = [...weights].sort((a, b) => b.date.localeCompare(a.date));
