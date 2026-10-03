@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Minus, Plus, X, Check } from 'lucide-react';
-import { useExercise } from '../lib/catalog';
+import { imageUrl, useExercise } from '../lib/catalog';
 import { MuscleFigure, thumbSpec } from './MuscleFigure';
 import { clamp } from '../lib/util';
 
@@ -129,15 +129,28 @@ export function Empty({ title, text, action }: { title: string; text?: string; a
   );
 }
 
-/** Miniatura simple: figura humana con el músculo principal en rojo. */
+/** Miniatura: foto del ejercicio con el músculo trabajado en rojo en la esquina (solo si hay espacio). */
 export function Thumb({ exerciseId, size = 56 }: { exerciseId?: string; size?: number; alt?: string }) {
   const ex = useExercise(exerciseId);
+  const [failed, setFailed] = useState(false);
   const style = { width: size, height: size };
   if (!ex) return <div className="thumb thumb-empty" style={style} aria-hidden="true" />;
   const { view, crop } = thumbSpec(ex.p);
+  const photo = ex.m > 0 && !failed;
   return (
     <div className="thumb" style={style} aria-hidden="true">
-      <MuscleFigure primary={ex.p} secondary={ex.s} view={view} crop={crop} />
+      {photo ? (
+        <>
+          <img src={imageUrl(ex.i, 0)} alt="" loading="lazy" onError={() => setFailed(true)} />
+          {size >= 56 && (
+            <span className="thumb-fig">
+              <MuscleFigure primary={ex.p} secondary={ex.s} view={view} />
+            </span>
+          )}
+        </>
+      ) : (
+        <MuscleFigure primary={ex.p} secondary={ex.s} view={view} crop={crop} />
+      )}
     </div>
   );
 }

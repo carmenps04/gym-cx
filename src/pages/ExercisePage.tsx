@@ -1,41 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Languages, Pause, Play, Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Empty, PageHeader, Stepper } from '../components/ui';
-import { MuscleFigure, figureLabel } from '../components/MuscleFigure';
+import { MuscleFigure } from '../components/MuscleFigure';
+import { Preview, Steps, VideoCard } from '../components/Technique';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
-import { LEVEL_LABEL, cardioById, equipLabel, imageUrl, muscleLabel, parseYouTubeId, translateUrl, useExercises, youtubeSearchUrl } from '../lib/catalog';
+import { LEVEL_LABEL, cardioById, equipLabel, muscleLabel, useExercises } from '../lib/catalog';
 import { exerciseSeries, lastSets } from '../lib/stats';
 import { fmtNum, kgToUnit, uid } from '../lib/util';
 import type { RoutineItem } from '../types';
-
-function Frames({ id, count, name }: { id: string; count: number; name: string }) {
-  const [frame, setFrame] = useState(0);
-  const [playing, setPlaying] = useState(() => !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    if (!playing || count < 2) return;
-    const t = window.setInterval(() => setFrame((f) => (f + 1) % count), 1200);
-    return () => window.clearInterval(t);
-  }, [playing, count]);
-  if (count === 0 || failed) return <div className="frames frames-empty">Sin imagen disponible</div>;
-  return (
-    <div className="frames">
-      <img src={imageUrl(id, frame)} alt={`${name}, posición ${frame + 1} de ${count}`} onError={() => setFailed(true)} />
-      {count > 1 && (
-        <div className="frames-bar">
-          {Array.from({ length: count }, (_, i) => (
-            <button key={i} className={`frame-dot${i === frame ? ' on' : ''}`} aria-label={`Ver posición ${i + 1}`} onClick={() => { setPlaying(false); setFrame(i); }} />
-          ))}
-          <button className="icon-btn sm" aria-label={playing ? 'Pausar animación' : 'Reproducir animación'} onClick={() => setPlaying((p) => !p)}>
-            {playing ? <Pause size={16} /> : <Play size={16} />}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function ExercisePage() {
   const { eid = '' } = useParams();
@@ -44,7 +18,7 @@ export default function ExercisePage() {
   const did = sp.get('did');
   const nav = useNavigate();
   const ui = useUi();
-  const { data, saveRoutine, updateMeta } = useData();
+  const { data, saveRoutine } = useData();
   const { byId, loading } = useExercises();
   const units = data.meta.settings.units;
 
@@ -58,11 +32,8 @@ export default function ExercisePage() {
   const [sets, setSets] = useState(3);
   const [reps, setReps] = useState(10);
   const [minutes, setMinutes] = useState(cardio?.defaultMinutes ?? 20);
-  const [videoInput, setVideoInput] = useState('');
 
   const title = isCardio ? cardio?.name : ex?.n;
-  const videoUrl = data.meta.videos[eid];
-  const videoId = videoUrl ? parseYouTubeId(videoUrl) : null;
 
   const history = useMemo(() => (!isCardio && ex ? { last: lastSets(data.sessions, ex.i), series: exerciseSeries(data.sessions, ex.i) } : null), [data.sessions, ex, isCardio]);
 
@@ -76,8 +47,6 @@ export default function ExercisePage() {
   }
   if (!title) return <div className="splash">Cargando…</div>;
 
-  const steps = ex?.t ?? [];
-
   const add = async () => {
     if (!routine || !day) return;
     const item: RoutineItem = isCardio && cardio ? { kind: 'cardio', id: uid(), cardioId: cardio.id, minutes } : { kind: 'strength', id: uid(), exerciseId: eid, sets, reps };
@@ -86,45 +55,13 @@ export default function ExercisePage() {
     nav(-1);
   };
 
-  const saveVideo = async () => {
-    if (!parseYouTubeId(videoInput)) {
-      ui.toast('Pega un enlace de YouTube válido (youtube.com o youtu.be).');
-      return;
-    }
-    await updateMeta((m) => ({ ...m, videos: { ...m.videos, [eid]: videoInput.trim() } }));
-    setVideoInput('');
-  };
-
   const best = history?.series.length ? Math.max(...history.series.map((s) => s.maxWeight)) : 0;
 
   return (
     <>
       <PageHeader title={title} sub={!isCardio && ex ? ex.e : undefined} back />
 
-      {ex && (
-        <section className="card figure-card" aria-label="Músculos trabajados">
-          <div className="figures">
-            <figure>
-              <MuscleFigure primary={ex.p} secondary={ex.s} view="front" label={figureLabel(ex.p, ex.s)} />
-              <figcaption>Frente</figcaption>
-            </figure>
-            <figure>
-              <MuscleFigure primary={ex.p} secondary={ex.s} view="back" />
-              <figcaption>Espalda</figcaption>
-            </figure>
-          </div>
-          <p className="legend">
-            <span className="dot hot" /> Principal
-            {ex.s.length > 0 && (
-              <>
-                <span className="dot warm" /> Apoyo
-              </>
-            )}
-          </p>
-        </section>
-      )}
-
-      {ex ? <Frames id={ex.i} count={ex.m} name={title} /> : <div className="frames frames-empty">Sin imagen disponible</div>}
+      {ex ? <Preview ex={ex} name={title} /> : <div className="preview"><div className="preview-empty">Sin foto disponible</div></div>}
 
       <div className="tags">
         {ex ? (
@@ -145,45 +82,31 @@ export default function ExercisePage() {
       {ex && ex.s.length > 0 && <p className="hint">Los músculos con etiqueta oscura son los principales; los demás trabajan como apoyo.</p>}
       {cardio && <p className="muted">{cardio.hint}</p>}
 
-      <section className="card">
-        <h2 className="h3">Vídeo explicativo</h2>
-        {videoId ? (
-          <>
-            <div className="video">
-              <iframe src={`https://www.youtube-nocookie.com/embed/${videoId}`} title={`Vídeo de ${title}`} allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen loading="lazy" />
-            </div>
-            <button className="btn block" onClick={() => updateMeta((m) => { const v = { ...m.videos }; delete v[eid]; return { ...m, videos: v }; })}>
-              <Trash2 size={16} /> Quitar este vídeo
-            </button>
-          </>
-        ) : (
-          <>
-            <p className="muted">El catálogo no incluye vídeos. Busca uno en YouTube y pega el enlace para verlo aquí en cada ejercicio.</p>
-            <a className="btn block" href={youtubeSearchUrl(title)} target="_blank" rel="noopener noreferrer">
-              <ExternalLink size={16} /> Buscar vídeos en YouTube
-            </a>
-            <div className="row">
-              <input className="input grow" inputMode="url" placeholder="Pega aquí el enlace del vídeo" aria-label="Enlace del vídeo" value={videoInput} onChange={(e) => setVideoInput(e.target.value)} />
-              <button className="btn" onClick={saveVideo} disabled={!videoInput.trim()}>
-                Guardar
-              </button>
-            </div>
-          </>
-        )}
-      </section>
+      {ex && <Steps ex={ex} />}
 
-      {steps.length > 0 && (
-        <section className="card">
-          <h2 className="h3">Cómo se hace</h2>
-          <ol className="steps" lang="en">
-            {steps.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ol>
-          <p className="hint">Las instrucciones del catálogo están en inglés.</p>
-          <a className="btn block" href={translateUrl(steps.join('\n'))} target="_blank" rel="noopener noreferrer">
-            <Languages size={16} /> Traducir al español
-          </a>
+      <VideoCard videoKey={eid} title={title} />
+
+      {ex && (
+        <section className="card figure-card" aria-label="Músculos trabajados">
+          <h2 className="h3">Músculos trabajados</h2>
+          <div className="figures">
+            <figure>
+              <MuscleFigure primary={ex.p} secondary={ex.s} view="front" />
+              <figcaption>Frente</figcaption>
+            </figure>
+            <figure>
+              <MuscleFigure primary={ex.p} secondary={ex.s} view="back" />
+              <figcaption>Espalda</figcaption>
+            </figure>
+          </div>
+          <p className="legend">
+            <span className="dot hot" /> Principal
+            {ex.s.length > 0 && (
+              <>
+                <span className="dot warm" /> Apoyo
+              </>
+            )}
+          </p>
         </section>
       )}
 

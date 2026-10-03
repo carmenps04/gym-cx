@@ -85,7 +85,7 @@ export default function Train() {
           <ul className="hero-list">
             {next.day.items.map((it) => (
               <li key={it.id}>
-                <Thumb exerciseId={itemRef(it)} size={44} />
+                <Thumb exerciseId={itemRef(it)} size={56} />
                 <span className="grow">{itemName(it)}</span>
                 <b>{itemGoal(it)}</b>
               </li>

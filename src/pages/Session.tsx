@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Minus, Plus, X } from 'lucide-react';
+import { Minus, Play, Plus, X } from 'lucide-react';
 import { Empty, NumInput, PageHeader, Plate, Sheet, Thumb } from '../components/ui';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import { cardioById, useExercises } from '../lib/catalog';
+import { Preview, Steps, VideoCard } from '../components/Technique';
 import { clearDraft, loadDraft, saveDraft } from '../lib/routine';
 import { findRecords, lastSets, sessionSetCount, sessionVolume } from '../lib/stats';
 import { fmtNum, formatClock, formatMinutes, kgToUnit, uid, unitToKg } from '../lib/util';
@@ -33,6 +34,8 @@ export default function Session() {
   const [now, setNow] = useState(Date.now());
   const [restEnd, setRestEnd] = useState<number | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  // Técnica abierta durante el entrenamiento: id del catálogo, clave del vídeo y título.
+  const [tech, setTech] = useState<{ exId: string; videoKey: string; title: string } | null>(null);
   const finished = useRef(false);
 
   // Crea el borrador al entrar (o retoma el que ya existía para este día).
@@ -198,11 +201,16 @@ export default function Session() {
             return (
               <section className={`card exo${e.done ? ' finished' : ''}`} key={e.itemId}>
                 <div className="exo-head">
-                  <Thumb exerciseId={cd?.refId} size={48} />
+                  <Thumb exerciseId={cd?.refId} size={56} />
                   <div className="grow">
                     <Link to={`/ejercicio/cardio_${e.cardioId}`} className="exo-name">{cd?.name ?? 'Cardio'}</Link>
                     <small className="muted">Cardio</small>
                   </div>
+                  {cd?.refId && (
+                    <button className="btn sm" onClick={() => setTech({ exId: cd.refId as string, videoKey: `cardio_${cd.id}`, title: cd.name })}>
+                      <Play size={14} /> Técnica
+                    </button>
+                  )}
                 </div>
                 <div className="set-row">
                   <Plate n={1} done={e.done} label={e.done ? 'Marcar como no hecho' : 'Marcar como hecho'} onClick={() => patchEntry(e.itemId, (x) => (x.kind === 'cardio' ? { ...x, done: !x.done } : x))} />
@@ -226,11 +234,14 @@ export default function Session() {
           return (
             <section className={`card exo${e.sets.every((s) => s.done) ? ' finished' : ''}`} key={e.itemId}>
               <div className="exo-head">
-                <Thumb exerciseId={e.exerciseId} size={48} />
+                <Thumb exerciseId={e.exerciseId} size={56} />
                 <div className="grow">
                   <Link to={`/ejercicio/${encodeURIComponent(e.exerciseId)}`} className="exo-name">{ex?.n ?? '…'}</Link>
                   <small className="muted">{top ? `Última vez: ${fmtNum(kgToUnit(top.weight, units))} ${units} × ${top.reps}` : 'Primera vez'}</small>
                 </div>
+                <button className="btn sm" onClick={() => setTech({ exId: e.exerciseId, videoKey: e.exerciseId, title: ex?.n ?? 'Ejercicio' })}>
+                  <Play size={14} /> Técnica
+                </button>
               </div>
               <div className="set-head" aria-hidden="true">
                 <span />
@@ -284,6 +295,19 @@ export default function Session() {
           </div>
         </div>
       )}
+
+      <Sheet open={!!tech} onClose={() => setTech(null)} title={tech?.title ?? 'Técnica'}>
+        {tech && (
+          <div className="stack">
+            {byId.get(tech.exId) && <Preview ex={byId.get(tech.exId)!} name={tech.title} />}
+            {byId.get(tech.exId) && <Steps ex={byId.get(tech.exId)!} />}
+            <VideoCard videoKey={tech.videoKey} title={tech.title} />
+            <button className="btn primary block" onClick={() => setTech(null)}>
+              Volver al entrenamiento
+            </button>
+          </div>
+        )}
+      </Sheet>
 
       <Sheet open={!!summary} onClose={() => nav('/progreso', { replace: true })} title="Entrenamiento guardado">
         {summary && (

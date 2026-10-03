@@ -54,7 +54,7 @@ export default function RoutineView() {
                   return (
                     <li className="item item-row" key={it.id}>
                       <Link to={it.kind === 'strength' ? `/ejercicio/${encodeURIComponent(it.exerciseId)}` : `/ejercicio/cardio_${it.cardioId}`} className="item-main">
-                        <Thumb exerciseId={it.kind === 'strength' ? it.exerciseId : cd?.refId} size={48} />
+                        <Thumb exerciseId={it.kind === 'strength' ? it.exerciseId : cd?.refId} size={56} />
                         <span className="result-text">
                           <b>{it.kind === 'strength' ? ex?.n ?? '…' : cd?.name ?? 'Cardio'}</b>
                           <small className="muted">{it.kind === 'strength' ? `${it.sets} series, ${it.reps} reps` : `${it.minutes} min${it.distanceKm ? `, ${it.distanceKm} km` : ''}`}</small>
