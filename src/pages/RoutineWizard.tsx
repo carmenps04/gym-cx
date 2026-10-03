@@ -42,11 +42,20 @@ function WizardSteps({ current }: { current: 1 | 2 | 3 }) {
 
 // ---------------------------------------------------------------- selector de ejercicio
 
-function ExercisePicker({ list, loading, gear, full, onPick, onPickCardio, onBack }: { list: Ex[]; loading: boolean; gear: string[]; full: boolean; onPick: (e: Ex) => void; onPickCardio: (c: CardioDef) => void; onBack: () => void }) {
-  const [tab, setTab] = useState<'fuerza' | 'cardio'>('fuerza');
+// Filtros del selector: viven en el asistente para conservarse al añadir un ejercicio tras otro.
+interface PickFilters {
+  tab: 'fuerza' | 'cardio';
+  muscle: string;
+  material: string;
+}
+
+function ExercisePicker({ list, loading, gear, full, filters, onFilters, onPick, onPickCardio, onBack }: { list: Ex[]; loading: boolean; gear: string[]; full: boolean; filters: PickFilters; onFilters: (f: PickFilters) => void; onPick: (e: Ex) => void; onPickCardio: (c: CardioDef) => void; onBack: () => void }) {
+  const { tab, muscle } = filters;
+  const material = filters.material === 'mine' && gear.length === 0 ? 'all' : filters.material;
+  const setTab = (t: PickFilters['tab']) => onFilters({ ...filters, tab: t });
+  const setMuscle = (m: string) => onFilters({ ...filters, muscle: m });
+  const setMaterial = (m: string) => onFilters({ ...filters, material: m });
   const [text, setText] = useState('');
-  const [muscle, setMuscle] = useState('');
-  const [material, setMaterial] = useState(gear.length ? 'mine' : 'all');
   const [shown, setShown] = useState(PAGE);
 
   const equipment = material === 'mine' ? gear : material === 'all' ? [] : [material];
@@ -204,6 +213,7 @@ function Wizard({ initial, editing }: { initial: Routine; editing: boolean }) {
   const [sub, setSub] = useState<Sub | null>(null);
   const [perWeek, setPerWeek] = useState(editing ? initial.days.length : 3);
   const [gear, setGear] = useState<string[]>(data.meta.settings.equipment);
+  const [pickFilters, setPickFilters] = useState<PickFilters>(() => ({ tab: 'fuerza', muscle: '', material: data.meta.settings.equipment.length ? 'mine' : 'all' }));
   const [saving, setSaving] = useState(false);
 
   const day = routine.days[Math.min(dayIdx, routine.days.length - 1)];
@@ -365,6 +375,8 @@ function Wizard({ initial, editing }: { initial: Routine; editing: boolean }) {
         loading={loading}
         gear={gear}
         full={remaining <= 0}
+        filters={pickFilters}
+        onFilters={setPickFilters}
         onBack={goBack}
         onPick={(e) => setSub({ kind: 'target', exerciseId: e.i })}
         onPickCardio={(c) => setSub({ kind: 'target', cardioId: c.id })}

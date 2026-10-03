@@ -55,9 +55,39 @@ export const equipLabel = (id: string) => equipMap.get(id) ?? id;
 
 // ---------- Carga perezosa del catálogo ----------
 let promise: Promise<Ex[]> | null = null;
+let byIdCache: Map<string, Ex> | null = null;
 export function loadExercises(): Promise<Ex[]> {
-  if (!promise) promise = import('../data/exercises.json').then((m) => m.default as unknown as Ex[]);
+  if (!promise) {
+    promise = import('../data/exercises.json').then((m) => {
+      const list = m.default as unknown as Ex[];
+      byIdCache = new Map(list.map((e) => [e.i, e]));
+      return list;
+    });
+  }
   return promise;
+}
+
+/** Un ejercicio del catálogo por id; se resuelve al instante si el catálogo ya está cargado. */
+export function useExercise(id?: string): Ex | undefined {
+  const [ex, setEx] = useState<Ex | undefined>(() => (id && byIdCache ? byIdCache.get(id) : undefined));
+  useEffect(() => {
+    if (!id) {
+      setEx(undefined);
+      return undefined;
+    }
+    if (byIdCache) {
+      setEx(byIdCache.get(id));
+      return undefined;
+    }
+    let alive = true;
+    loadExercises().then(() => {
+      if (alive && byIdCache) setEx(byIdCache.get(id));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+  return ex;
 }
 
 export function useExercises(): { list: Ex[]; byId: Map<string, Ex>; loading: boolean } {

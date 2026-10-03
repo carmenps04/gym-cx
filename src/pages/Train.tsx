@@ -1,13 +1,16 @@
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, Play, Plus, Search, X } from 'lucide-react';
-import { PageHeader, Empty } from '../components/ui';
+import { PageHeader, Empty, Thumb } from '../components/ui';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import { WEEKDAY_NAMES, WEEKDAY_SHORT, clearDraft, exerciseCount, loadDraft, weekdaysLabel } from '../lib/routine';
 import { addDays, isoDate, startOfWeek, weekdayIndex } from '../lib/util';
 import { trainedDays } from '../lib/stats';
 import { useStartDay } from '../lib/useStart';
+import { nextWorkout } from '../lib/next';
+import { cardioById, useExercises } from '../lib/catalog';
+import type { RoutineItem } from '../types';
 
 export default function Train() {
   const { data, deleteRoutine } = useData();
@@ -18,19 +21,17 @@ export default function Train() {
   const today = weekdayIndex(now);
   const name = data.meta.profile.name.trim();
 
+  const { byId } = useExercises();
   const scheduled = useMemo(
     () => data.routines.flatMap((r) => r.days.filter((d) => d.items.length > 0).map((d) => ({ r, d }))),
     [data.routines],
   );
-  const todays = scheduled.filter(({ d }) => d.weekdays.includes(today as 0));
-  const next = useMemo(() => {
-    for (let k = 1; k <= 7; k++) {
-      const w = (today + k) % 7;
-      const hit = scheduled.filter(({ d }) => d.weekdays.includes(w as 0));
-      if (hit.length) return { k, w, hit };
-    }
-    return null;
-  }, [scheduled, today]);
+  const next = useMemo(() => nextWorkout(data.routines, data.sessions), [data.routines, data.sessions]);
+  const startable = useMemo(() => data.routines.filter((r) => r.days.some((d) => d.items.length > 0)), [data.routines]);
+
+  const itemName = (it: RoutineItem) => (it.kind === 'strength' ? byId.get(it.exerciseId)?.n ?? '…' : cardioById(it.cardioId)?.name ?? 'Cardio');
+  const itemRef = (it: RoutineItem) => (it.kind === 'strength' ? it.exerciseId : cardioById(it.cardioId)?.refId);
+  const itemGoal = (it: RoutineItem) => (it.kind === 'strength' ? `${it.sets} × ${it.reps}` : `${it.minutes} min`);
 
   const trained = trainedDays(data.sessions);
   const weekStart = startOfWeek(now);
@@ -75,6 +76,79 @@ export default function Train() {
         </section>
       )}
 
+      {!draft && next && (
+        <section className="card hero">
+          <p className="eyebrow">
+            {next.routine.name}, día {next.number} de {next.total}
+          </p>
+          <h2 className="hero-title">{next.day.name}</h2>
+          <ul className="hero-list">
+            {next.day.items.map((it) => (
+              <li key={it.id}>
+                <Thumb exerciseId={itemRef(it)} size={44} />
+                <span className="grow">{itemName(it)}</span>
+                <b>{itemGoal(it)}</b>
+              </li>
+            ))}
+          </ul>
+          <button className="btn primary block" onClick={() => startDay(next.routine.id, next.day.id)}>
+            <Play size={18} /> Empezar entrenamiento
+          </button>
+          <Link className="link center" to={`/rutina/${next.routine.id}/entrenar`}>
+            Elegir otro día
+          </Link>
+        </section>
+      )}
+
+      {!draft && !next && (
+        <section className="card hero">
+          <h2 className="hero-title">Empezar rutina</h2>
+          {startable.length === 0 ? (
+            <>
+              <p className="muted">Aún no tienes ninguna rutina. Crea una para poder empezar.</p>
+              <Link className="btn primary block" to="/rutina/nueva">
+                <Plus size={18} /> Crear una rutina
+              </Link>
+            </>
+          ) : startable.length === 1 ? (
+            <>
+              <p className="muted">
+                {startable[0].name}, {startable[0].days.length} {startable[0].days.length === 1 ? 'día' : 'días'}. Empiezas por el primer día.
+              </p>
+              <button
+                className="btn primary block"
+                onClick={() => {
+                  const first = startable[0].days.find((d) => d.items.length > 0);
+                  if (first) startDay(startable[0].id, first.id);
+                }}
+              >
+                <Play size={18} /> Empezar rutina
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="muted">Elige con cuál quieres empezar.</p>
+              <div className="stack">
+                {[...startable]
+                  .sort((a, b) => a.createdAt - b.createdAt)
+                  .map((r) => (
+                    <button
+                      key={r.id}
+                      className="btn primary block"
+                      onClick={() => {
+                        const first = r.days.find((d) => d.items.length > 0);
+                        if (first) startDay(r.id, first.id);
+                      }}
+                    >
+                      <Play size={18} /> {r.name}
+                    </button>
+                  ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
       <section className="week" aria-label="Esta semana">
         {WEEKDAY_SHORT.map((l, i) => {
           const date = addDays(weekStart, i);
@@ -88,33 +162,6 @@ export default function Train() {
           );
         })}
       </section>
-
-      {!draft &&
-        (todays.length > 0 ? (
-          todays.map(({ r, d }) => (
-            <section className="card hero" key={d.id}>
-              <h2>Hoy toca</h2>
-              <p className="hero-title">{d.name}</p>
-              <p>
-                {r.name}, {d.items.length} {d.items.length === 1 ? 'ejercicio' : 'ejercicios'}
-              </p>
-              <button className="btn primary block" onClick={() => startDay(r.id, d.id)}>
-                <Play size={18} /> Empezar entrenamiento
-              </button>
-            </section>
-          ))
-        ) : (
-          <section className="card">
-            <h2 className="h3">Hoy no tienes entrenamiento programado</h2>
-            {next ? (
-              <p className="muted">
-                Próximo: {next.k === 1 ? 'mañana' : WEEKDAY_NAMES[next.w].toLowerCase()}, {next.hit.map(({ d }) => d.name).join(' y ')}.
-              </p>
-            ) : (
-              <p className="muted">Asigna días de la semana a tus rutinas para ver aquí lo que toca cada día.</p>
-            )}
-          </section>
-        ))}
 
       <div className="section-head">
         <h2>Mis rutinas</h2>
@@ -159,9 +206,11 @@ export default function Train() {
       )}
 
       <div className="stack gap-top">
-        <Link className="btn primary block" to="/rutina/nueva">
-          <Plus size={18} /> Crear una rutina
-        </Link>
+        {startable.length > 0 && (
+          <Link className="btn block" to="/rutina/nueva">
+            <Plus size={18} /> Crear una rutina
+          </Link>
+        )}
         <Link className="btn block" to="/explorar">
           <Search size={18} /> Buscar ejercicios
         </Link>

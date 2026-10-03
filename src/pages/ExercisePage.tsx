@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ExternalLink, Languages, Pause, Play, Plus, Trash2 } from 'lucide-react';
 import { Empty, PageHeader, Stepper } from '../components/ui';
+import { MuscleFigure, figureLabel } from '../components/MuscleFigure';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import { LEVEL_LABEL, cardioById, equipLabel, imageUrl, muscleLabel, parseYouTubeId, translateUrl, useExercises, youtubeSearchUrl } from '../lib/catalog';
@@ -99,6 +100,29 @@ export default function ExercisePage() {
   return (
     <>
       <PageHeader title={title} sub={!isCardio && ex ? ex.e : undefined} back />
+
+      {ex && (
+        <section className="card figure-card" aria-label="Músculos trabajados">
+          <div className="figures">
+            <figure>
+              <MuscleFigure primary={ex.p} secondary={ex.s} view="front" label={figureLabel(ex.p, ex.s)} />
+              <figcaption>Frente</figcaption>
+            </figure>
+            <figure>
+              <MuscleFigure primary={ex.p} secondary={ex.s} view="back" />
+              <figcaption>Espalda</figcaption>
+            </figure>
+          </div>
+          <p className="legend">
+            <span className="dot hot" /> Principal
+            {ex.s.length > 0 && (
+              <>
+                <span className="dot warm" /> Apoyo
+              </>
+            )}
+          </p>
+        </section>
+      )}
 
       {ex ? <Frames id={ex.i} count={ex.m} name={title} /> : <div className="frames frames-empty">Sin imagen disponible</div>}
 

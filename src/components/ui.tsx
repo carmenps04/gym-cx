@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Minus, Plus, X, Check } from 'lucide-react';
-import { imageUrl } from '../lib/catalog';
+import { useExercise } from '../lib/catalog';
+import { MuscleFigure, thumbSpec } from './MuscleFigure';
 import { clamp } from '../lib/util';
 
 export function Chip({ active, onClick, children, count }: { active?: boolean; onClick?: () => void; children: ReactNode; count?: number }) {
@@ -128,11 +129,17 @@ export function Empty({ title, text, action }: { title: string; text?: string; a
   );
 }
 
-export function Thumb({ exerciseId, size = 56, alt = '' }: { exerciseId?: string; size?: number; alt?: string }) {
-  const [failed, setFailed] = useState(false);
+/** Miniatura simple: figura humana con el músculo principal en rojo. */
+export function Thumb({ exerciseId, size = 56 }: { exerciseId?: string; size?: number; alt?: string }) {
+  const ex = useExercise(exerciseId);
   const style = { width: size, height: size };
-  if (!exerciseId || failed) return <div className="thumb thumb-empty" style={style} aria-hidden="true" />;
-  return <img className="thumb" style={style} src={imageUrl(exerciseId, 0)} alt={alt} loading="lazy" onError={() => setFailed(true)} />;
+  if (!ex) return <div className="thumb thumb-empty" style={style} aria-hidden="true" />;
+  const { view, crop } = thumbSpec(ex.p);
+  return (
+    <div className="thumb" style={style} aria-hidden="true">
+      <MuscleFigure primary={ex.p} secondary={ex.s} view={view} crop={crop} />
+    </div>
+  );
 }
 
 /** Disco de pesa: cada serie es una. Al completarla se rellena. */
