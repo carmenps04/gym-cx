@@ -2,13 +2,16 @@
 
 export interface Series {
   name: string;
-  /** Variable CSS del color, p. ej. 'var(--accent)'. */
+  /** Variable CSS del color, p. ej. 'var(--line-1)'. */
   color: string;
   values: (number | null)[];
   dashed?: boolean;
 }
 
 const W = 340;
+
+/** Paleta pastel: cada barra de una misma gráfica lleva un color distinto. */
+export const PASTEL = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)', 'var(--p5)', 'var(--p6)', 'var(--p7)', 'var(--p8)'];
 const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ','));
 
 function Legend({ series }: { series: { name: string; color: string; dashed?: boolean }[] }) {
@@ -93,7 +96,10 @@ export function LineChart({ labels, series, min, max, height = 170, label }: { l
   );
 }
 
-/** Barras verticales agrupadas. Con una sola serie, «colors» permite colorear cada barra. */
+/**
+ * Barras verticales. Con una sola serie, cada barra lleva un color pastel distinto (o el de «colors» si el
+ * color significa algo, como la exigencia de la cinta). Con varias series, cada serie tiene su color.
+ */
 export function BarChart({ labels, series, max, height = 170, label, unit = '', colors }: { labels: string[]; series: Series[]; max: number; height?: number; label: string; unit?: string; colors?: string[] }) {
   const H = height;
   const L = 24, R = 6, T = 14, B = 22;
@@ -120,10 +126,10 @@ export function BarChart({ labels, series, max, height = 170, label, unit = '', 
             if (v == null) return null;
             const x0 = cx(i) - (bw * series.length) / 2 + k * bw;
             const h = Math.max(1.5, y(0) - y(Math.min(v, max)));
-            const fill = colors && series.length === 1 ? colors[i] : s.color;
+            const fill = series.length === 1 ? colors?.[i] ?? PASTEL[i % PASTEL.length] : s.color;
             return (
               <g key={`${k}-${i}`}>
-                <rect x={x0 + 1} y={y(0) - h} width={bw - 2} height={h} rx={3} fill={fill} />
+                <rect x={x0 + 1} y={y(0) - h} width={bw - 2} height={h} rx={4} fill={fill} className="bar" />
                 {n * series.length <= 14 && (
                   <text x={x0 + bw / 2} y={y(0) - h - 3} className="bar-val" textAnchor="middle">
                     {fmt(v)}
@@ -173,7 +179,7 @@ export function StackedBars({ labels, stacks, height = 150, label }: { labels: s
                 const top = y(acc + v);
                 const h = y(acc) - top;
                 acc += v;
-                return <rect key={s.name} x={cx(i) - bw / 2} y={top} width={bw} height={Math.max(0, h - 1)} rx={2} fill={s.color} />;
+                return <rect key={s.name} x={cx(i) - bw / 2} y={top} width={bw} height={Math.max(0, h - 1)} rx={3} fill={s.color} className="bar" />;
               })}
             </g>
           );
@@ -216,13 +222,13 @@ export function DeltaBars({ items, label }: { items: DeltaItem[]; label: string 
 }
 
 /** Barra horizontal 0–max para comparar medias. */
-export function MeterRow({ label, value, max, suffix = '' }: { label: string; value: number | null; max: number; suffix?: string }) {
+export function MeterRow({ label, value, max, suffix = '', color }: { label: string; value: number | null; max: number; suffix?: string; color?: string }) {
   const pct = value == null ? 0 : Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div className="meter-row">
       <span className="meter-label">{label}</span>
       <span className="meter">
-        <span style={{ width: `${pct}%` }} />
+        <span style={{ width: `${pct}%`, background: color }} />
       </span>
       <span className="meter-value">{value == null ? '—' : `${value.toFixed(1).replace('.', ',')}${suffix}`}</span>
     </div>

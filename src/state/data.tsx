@@ -13,6 +13,7 @@ interface DataCtx {
   syncError: string | null;
   saveEntry(e: Entry): Promise<void>;
   deleteEntry(id: string): Promise<void>;
+  deleteMany(entryIds: string[], loadDates: string[]): Promise<void>;
   saveConfig(c: Config): Promise<void>;
   saveLoads(days: LoadDay[]): Promise<void>;
   replaceAll(d: AppData): Promise<void>;
@@ -75,6 +76,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       syncError,
       saveEntry: (e) => guard((b) => b.saveEntry({ ...e, updatedAt: Date.now() })),
       deleteEntry: (id) => guard((b) => b.deleteEntry(id)),
+      deleteMany: (ids, dates) => guard((b) => b.deleteMany(ids, dates)),
       saveConfig: (c) => guard((b) => b.saveConfig({ ...c, updatedAt: Date.now() })),
       saveLoads: (days) => guard((b) => b.saveLoads(days)),
       // Restaurar una copia sí espera a terminar: se borra y se reescribe todo.

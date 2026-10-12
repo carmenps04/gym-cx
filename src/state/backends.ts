@@ -20,6 +20,8 @@ export interface Backend {
   subscribe(cb: (d: AppData, info: SnapshotInfo) => void, onError: (e: unknown) => void): () => void;
   saveEntry(e: Entry): Promise<void>;
   deleteEntry(id: string): Promise<void>;
+  /** Borra varias sesiones y días importados de una vez (p. ej. una semana de prueba). */
+  deleteMany(entryIds: string[], loadDates: string[]): Promise<void>;
   saveConfig(c: Config): Promise<void>;
   /** Añade o sustituye los días importados (uno por fecha). */
   saveLoads(days: LoadDay[]): Promise<void>;
@@ -67,6 +69,12 @@ export function createLocalBackend(): Backend {
     async deleteEntry(id) {
       const d = readLocal();
       write({ ...d, entries: d.entries.filter((x) => x.id !== id) });
+    },
+    async deleteMany(entryIds, loadDates) {
+      const d = readLocal();
+      const ids = new Set(entryIds);
+      const dates = new Set(loadDates);
+      write({ ...d, entries: d.entries.filter((x) => !ids.has(x.id)), loads: d.loads.filter((x) => !dates.has(x.date)) });
     },
     async saveConfig(c) {
       write({ ...readLocal(), config: c });
@@ -155,6 +163,15 @@ export function createCloudBackend(uid: string): Backend {
     async deleteEntry(id) {
       const { fs, entries } = await refs();
       await fs.deleteDoc(fs.doc(entries, id));
+    },
+    async deleteMany(entryIds, loadDates) {
+      const { fs, db, entries, loads } = await refs();
+      const refsToDelete = [...entryIds.map((id) => fs.doc(entries, id)), ...loadDates.map((d) => fs.doc(loads, d))];
+      for (let i = 0; i < refsToDelete.length; i += 450) {
+        const batch = fs.writeBatch(db);
+        refsToDelete.slice(i, i + 450).forEach((r) => batch.delete(r));
+        await batch.commit();
+      }
     },
     async saveConfig(c) {
       const { fs, userDoc } = await refs();

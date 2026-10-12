@@ -3,7 +3,7 @@
   "short_name": "Diario gym",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#EDE7DA",
-  "theme_color": "#5F6E26",
+  "background_color": "#ffffff",
+  "theme_color": "#a8d38a",
   "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }

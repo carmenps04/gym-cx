@@ -10,20 +10,20 @@ import { NbImportButton } from '../components/NbImport';
 import { localDate, programStart } from '../lib/report';
 import { Card, PageHeader, Segmented } from '../components/ui';
 
-export type Theme = 'system' | 'light' | 'dark';
+export type Theme = 'light' | 'dark';
 const THEME_KEY = 'diario.theme';
 
 export function readTheme(): Theme {
   try {
     const t = localStorage.getItem(THEME_KEY);
-    return t === 'light' || t === 'dark' ? t : 'system';
+    return t === 'dark' ? 'dark' : 'light';
   } catch {
-    return 'system';
+    return 'light';
   }
 }
 export function applyTheme(t: Theme): void {
   const root = document.documentElement;
-  if (t === 'system') root.removeAttribute('data-theme');
+  if (t === 'light') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', t);
 }
 
@@ -247,7 +247,6 @@ export default function Settings() {
         <Segmented<Theme>
           label="Tema"
           options={[
-            { id: 'system', label: 'Automático' },
             { id: 'light', label: 'Claro' },
             { id: 'dark', label: 'Oscuro' },
           ]}

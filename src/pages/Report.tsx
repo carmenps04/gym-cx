@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { CalendarPlus, Check } from 'lucide-react';
+import { CalendarPlus, Check, FileDown, Trash2 } from 'lucide-react';
 import { useData } from '../state/data';
+import { useUi } from '../state/ui';
 import {
   STALL_SESSIONS,
   feelSummary,
@@ -18,11 +19,11 @@ import {
   wellSummary,
 } from '../lib/report';
 import type { LoadStatus, WindowProgress } from '../lib/report';
-import type { TreadmillRating } from '../types';
+import type { Entry, LoadDay, TreadmillRating } from '../types';
 import { calendarLinkFor } from '../lib/calendar';
 import { fmtDate, fmtLoad, fmtNum, fmtShort } from '../lib/util';
 import { Empty, PageHeader, Stat } from '../components/ui';
-import { BarChart, DeltaBars, LineChart, MeterRow, StackedBars } from '../components/charts';
+import { BarChart, DeltaBars, LineChart, MeterRow, PASTEL, StackedBars } from '../components/charts';
 import type { DeltaItem } from '../components/charts';
 
 type Sel = number | 'todo';
@@ -36,9 +37,9 @@ const STATUS_LABEL: Record<LoadStatus, string> = {
 };
 
 const RATING: { id: TreadmillRating; label: string; color: string }[] = [
-  { id: 'poco', label: 'Poco exigente', color: 'var(--c3)' },
-  { id: 'bien', label: 'Bien', color: 'var(--accent)' },
-  { id: 'mucho', label: 'Demasiado', color: 'var(--c2)' },
+  { id: 'poco', label: 'Poco exigente', color: 'var(--p-poco)' },
+  { id: 'bien', label: 'Bien', color: 'var(--p-bien)' },
+  { id: 'mucho', label: 'Demasiado', color: 'var(--p-mucho)' },
 ];
 
 const f1 = (n: number | null) => fmtNum(n == null ? null : Math.round(n * 10) / 10);
@@ -61,9 +62,10 @@ function versus(what: string, cur: number | null, prev: number | null, prevLabel
   return ` ${lead}${cap(d > 0 ? 'sube' : 'baja')} ${f1(Math.abs(d))} respecto a ${prevLabel} (${f1(prev)}).`;
 }
 
-function Q({ n, title, answer, children }: { n: number; title: string; answer: ReactNode; children?: ReactNode }) {
+/** «long»: la pregunta puede ocupar más de una página (lista de ejercicios); en el PDF se parte entre filas. */
+function Q({ n, title, answer, children, long }: { n: number; title: string; answer: ReactNode; children?: ReactNode; long?: boolean }) {
   return (
-    <section className="card q">
+    <section className={`card q${long ? ' q-long' : ''}`}>
       <div className="q-head">
         <span className="q-n">{n}</span>
         <h2 className="h3">{title}</h2>
@@ -90,6 +92,74 @@ function deltaItem(p: WindowProgress): DeltaItem | null {
   // El color sigue al estado (p. ej. un ejercicio puede subir respecto a la semana pasada y seguir sin superar su mejor marca).
   const tone = p.status === 'progresa' ? 'up' : p.status === 'baja' ? 'down' : p.status === 'estancado' ? 'stall' : 'flat';
   return { label: p.name, pct, text, tone };
+}
+
+/** Sesiones de la semana elegida, con opción de borrar una o la semana entera (p. ej. pruebas). */
+function WeekData({ label, entries, loads }: { label: string; entries: Entry[]; loads: LoadDay[] }) {
+  const { deleteEntry, deleteMany } = useData();
+  const ui = useUi();
+  if (entries.length === 0 && loads.length === 0) return null;
+
+  const removeOne = async (e: Entry) => {
+    const ok = await ui.confirm({ title: '¿Borrar esta sesión?', message: `${e.dayName}, ${fmtDate(e.at)}. Desaparece del informe; no se puede deshacer.`, confirmLabel: 'Borrar', danger: true });
+    if (ok) {
+      await deleteEntry(e.id);
+      ui.toast('Sesión borrada.');
+    }
+  };
+
+  const removeWeek = async () => {
+    const ok = await ui.confirm({
+      title: `¿Borrar los datos de la ${label}?`,
+      message: `Se borran ${entries.length} ${entries.length === 1 ? 'sesión' : 'sesiones'} del cuestionario. No se puede deshacer.`,
+      confirmLabel: 'Borrar semana',
+      danger: true,
+    });
+    if (!ok) return;
+    let dates: string[] = [];
+    if (loads.length) {
+      const alsoLoads = await ui.confirm({
+        title: '¿Borrar también las cargas importadas?',
+        message: `Esta semana hay ${loads.length} ${loads.length === 1 ? 'entrenamiento importado' : 'entrenamientos importados'} de Nivel Bestia. Si son reales, déjalos. Si los borras y vuelves a importar la copia, volverán.`,
+        confirmLabel: 'Borrar también',
+        cancelLabel: 'Dejarlas',
+      });
+      if (alsoLoads) dates = loads.map((l) => l.date);
+    }
+    await deleteMany(
+      entries.map((e) => e.id),
+      dates,
+    );
+    ui.toast('Datos de la semana borrados.');
+  };
+
+  return (
+    <section className="card no-print">
+      <h2 className="h3">Datos de esta semana</h2>
+      {entries.length > 0 && (
+        <ul className="list plain">
+          {entries.map((e) => (
+            <li key={e.id} className="week-row">
+              <Link to={`/sesion/${e.id}`} className="week-row-main">
+                <b>{e.dayName}</b> <span className="muted">· {fmtDate(e.at)}</span>
+                <div className="list-meta">
+                  Rodilla {e.kneeDuring ?? '—'} → {e.knee24h ?? '?'}
+                  {e.treadmill.done && ' · cinta'}
+                </div>
+              </Link>
+              <button className="icon-btn sm" aria-label={`Borrar la sesión de ${e.dayName} del ${fmtDate(e.at)}`} onClick={() => void removeOne(e)}>
+                <Trash2 size={17} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {loads.length > 0 && <p className="hint">{loads.length} {loads.length === 1 ? 'entrenamiento importado' : 'entrenamientos importados'} de Nivel Bestia esta semana.</p>}
+      <button className="btn block danger-outline" onClick={() => void removeWeek()}>
+        <Trash2 size={17} /> Borrar los datos de esta semana
+      </button>
+    </section>
+  );
 }
 
 export default function Report() {
@@ -137,9 +207,42 @@ export default function Report() {
     </div>
   );
 
+  const periodText = week ? `Semana ${week.n} · ${rangeText(week.from, week.to)}` : `Todo el programa, desde el ${fmtDate(start)}`;
+
+  // PDF: se usa la impresión del navegador (texto real, saltos de página controlados por CSS).
+  // El título del documento es el nombre que propone el navegador para el archivo.
+  const exportPdf = () => {
+    const prev = document.title;
+    const d = new Date();
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    document.title = `Informe gym - ${week ? `semana ${week.n}` : 'programa completo'} - ${stamp}`;
+    const restore = () => {
+      document.title = prev;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    window.print();
+  };
+
   const header = (
     <>
-      <PageHeader title="Informe" sub={week ? `Semana ${week.n} · ${rangeText(week.from, week.to)}${week.current ? ' (esta semana)' : ''}` : `Todo el programa, desde el ${fmtDate(start)}`} />
+      <PageHeader
+        title="Informe"
+        sub={`${periodText}${week?.current ? ' (esta semana)' : ''}`}
+        right={
+          <button type="button" className="btn sm pdf-btn" onClick={exportPdf} aria-label="Exportar el informe en PDF">
+            <FileDown size={17} /> PDF
+          </button>
+        }
+      />
+      <div className="print-only print-head">
+        <p className="print-app">Diario gym · Informe</p>
+        <h1>{periodText}</h1>
+        <p>
+          Generado el {fmtDate(now)} · {es.length} {es.length === 1 ? 'sesión' : 'sesiones'} con cuestionario
+          {week ? '' : ` · semanas ${weeks[0].n}–${weeks.filter((w) => !w.future).slice(-1)[0]?.n ?? weeks[0].n}`}
+        </p>
+      </div>
       {savedEntry && (
         <section className="card saved-banner">
           <div className="saved-row">
@@ -209,7 +312,15 @@ export default function Report() {
       const d = ws[ws.length - 1].knee! - ws[0].knee!;
       evo = ` De la semana ${ws[0].n} (${f1(ws[0].knee)}) a la ${ws[ws.length - 1].n} (${f1(ws[ws.length - 1].knee)}) ${d <= -0.5 ? 'baja' : d >= 0.5 ? 'sube' : 'se mantiene'}.`;
     }
-    kneeAnswer = `Media por sesión de pierna en todo el programa: ${f1(knee.avgSession)}/10.${evo}`;
+    const trend =
+      knee.trend === 'pocos'
+        ? ''
+        : knee.trend === 'baja'
+          ? ` Tendencia a la baja: de ${f1(knee.trendFrom)} en las primeras sesiones a ${f1(knee.trendTo)} en las últimas.`
+          : knee.trend === 'sube'
+            ? ` Tendencia al alza: de ${f1(knee.trendFrom)} en las primeras sesiones a ${f1(knee.trendTo)} en las últimas.`
+            : ` Estable: de ${f1(knee.trendFrom)} a ${f1(knee.trendTo)}.`;
+    kneeAnswer = `Media por sesión de pierna: ${f1(knee.avgSession)} sobre 10.${trend}${evo}`;
   }
 
   // ---------------------------------------------------------------- 3. Bienestar
@@ -248,12 +359,10 @@ export default function Report() {
     <div className="page report">
       {header}
 
-      <Q n={1} title="¿En qué ejercicios progresó la carga y en cuáles se estancó?" answer={loadAnswer}>
+      <Q n={1} long title="¿En qué ejercicios progresó la carga y en cuáles se estancó?" answer={loadAnswer}>
         {deltas.length > 0 && <DeltaBars items={deltas} label="Cambio de carga por ejercicio" />}
         {prog.length > 0 && (
-          <details className="more">
-            <summary>Detalle por ejercicio</summary>
-            <ul className="list plain">
+          <ul className="list plain">
               {prog.map((p) => (
                 <li key={p.name} className="load-row">
                   <div>
@@ -272,7 +381,6 @@ export default function Report() {
                 </li>
               ))}
             </ul>
-          </details>
         )}
         <p className="method">
           {week ? 'Cada ejercicio se compara con la última vez que lo hiciste antes de esta semana. ' : 'Cada ejercicio se compara con la última vez antes de empezar el programa (o con la primera dentro de él). '}
@@ -287,21 +395,21 @@ export default function Report() {
             labels={sessLabels(knee.points)}
             max={10}
             series={[
-              { name: 'Durante', color: 'var(--c2)', values: knee.points.map((p) => p.during) },
-              { name: 'A las 24 h', color: 'var(--c3)', values: knee.points.map((p) => p.h24) },
+              { name: 'Durante', color: 'var(--p3)', values: knee.points.map((p) => p.during) },
+              { name: 'A las 24 h', color: 'var(--p2)', values: knee.points.map((p) => p.h24) },
             ]}
           />
         )}
-        {!week && stats.some((s) => s.knee != null) && (
+        {!week && knee.points.length > 0 && (
           <LineChart
-            label="Dolor de rodilla: media semanal de las sesiones de pierna"
-            labels={weekLabels}
+            label="Dolor de rodilla por sesión de pierna"
+            labels={sessLabels(knee.points)}
             min={0}
             max={10}
             series={[
-              { name: 'Media', color: 'var(--accent)', values: stats.map((s) => s.knee) },
-              { name: 'Durante', color: 'var(--c2)', values: stats.map((s) => s.kneeDuring), dashed: true },
-              { name: 'A las 24 h', color: 'var(--c3)', values: stats.map((s) => s.knee24h), dashed: true },
+              { name: 'Media de la sesión', color: 'var(--line-1)', values: knee.points.map((p) => p.mean) },
+              { name: 'Durante', color: 'var(--c2)', values: knee.points.map((p) => p.during), dashed: true },
+              { name: 'A las 24 h', color: 'var(--c3)', values: knee.points.map((p) => p.h24), dashed: true },
             ]}
           />
         )}
@@ -321,6 +429,7 @@ export default function Report() {
             })()}
           </p>
         )}
+        {knee.points.length > 0 && <p className="method">La media de cada sesión usa el dolor durante y a las 24 h; si falta uno, se usa el otro.</p>}
       </Q>
 
       <Q n={3} title="Energía, sueño y recuperación entre sesiones" answer={wellAnswer}>
@@ -332,13 +441,13 @@ export default function Report() {
               min={1}
               max={5}
               series={[
-                { name: 'Energía', color: 'var(--accent)', values: well.points.map((p) => p.energy) },
+                { name: 'Energía', color: 'var(--line-1)', values: well.points.map((p) => p.energy) },
                 { name: 'Recuperación', color: 'var(--c2)', values: well.points.map((p) => p.recovery) },
                 { name: 'Calidad del sueño', color: 'var(--c3)', values: well.points.map((p) => p.sleepQuality), dashed: true },
               ]}
             />
             <h3 className="chart-title">Horas de sueño la noche anterior</h3>
-            <BarChart label="Horas de sueño por sesión" labels={sessLabels(well.points)} max={10} series={[{ name: 'Horas', color: 'var(--c3)', values: well.points.map((p) => p.sleepHours) }]} />
+            <BarChart label="Horas de sueño por sesión" labels={sessLabels(well.points)} max={10} series={[{ name: 'Horas', color: '', values: well.points.map((p) => p.sleepHours) }]} />
           </>
         )}
         {!week && stats.some((s) => s.sessions > 0) && (
@@ -349,24 +458,49 @@ export default function Report() {
               min={1}
               max={5}
               series={[
-                { name: 'Energía', color: 'var(--accent)', values: stats.map((s) => s.energy) },
+                { name: 'Energía', color: 'var(--line-1)', values: stats.map((s) => s.energy) },
                 { name: 'Recuperación', color: 'var(--c2)', values: stats.map((s) => s.recovery) },
                 { name: 'Calidad del sueño', color: 'var(--c3)', values: stats.map((s) => s.sleepQuality), dashed: true },
               ]}
             />
             <h3 className="chart-title">Horas de sueño (media semanal)</h3>
-            <BarChart label="Horas de sueño por semana" labels={weekLabels} max={10} series={[{ name: 'Horas', color: 'var(--c3)', values: stats.map((s) => s.sleepHours) }]} />
+            <BarChart label="Horas de sueño por semana" labels={weekLabels} max={10} series={[{ name: 'Horas', color: '', values: stats.map((s) => s.sleepHours) }]} />
           </>
         )}
         {(well.recoveryShortRest != null || well.recoveryLongRest != null) && (
           <div className="meters">
-            <MeterRow label="Recuperación tras 0–1 días de descanso" value={well.recoveryShortRest} max={5} />
-            <MeterRow label="Recuperación tras 2 o más días" value={well.recoveryLongRest} max={5} />
+            <MeterRow label="Recuperación tras 0–1 días de descanso" value={well.recoveryShortRest} max={5} color="var(--p2)" />
+            <MeterRow label="Recuperación tras 2 o más días" value={well.recoveryLongRest} max={5} color="var(--p1)" />
           </div>
+        )}
+        {well.lowSessions.length > 0 && (
+          <ul className="list plain compact">
+            {well.lowSessions
+              .slice(-5)
+              .reverse()
+              .map((p) => (
+                <li key={p.id}>
+                  <Link to={`/sesion/${p.id}`}>
+                    {fmtDate(p.at)} · {p.dayName}
+                  </Link>
+                  <span className="list-meta">
+                    {' '}
+                    energía {p.energy ?? '—'}, sueño {p.sleepQuality ?? '—'}, recuperación {p.recovery ?? '—'}
+                  </span>
+                </li>
+              ))}
+          </ul>
         )}
       </Q>
 
       <Q n={4} title="¿La cinta se toleró bien o fue demasiado o poco exigente?" answer={tmAnswer}>
+        {tm.sessions.length > 0 && (
+          <div className="stats">
+            <Stat label="Poco exigente" value={String(tm.counts.poco)} />
+            <Stat label="Bien" value={String(tm.counts.bien)} />
+            <Stat label="Demasiado" value={String(tm.counts.mucho)} />
+          </div>
+        )}
         {week && tm.sessions.length > 0 && (
           <>
             <h3 className="chart-title">Minutos de cinta por sesión, según exigencia</h3>
@@ -374,8 +508,8 @@ export default function Report() {
               label="Minutos de cinta por sesión"
               labels={sessLabels(tm.sessions)}
               max={Math.max(30, ...tm.sessions.map((e) => e.treadmill.min ?? 0))}
-              series={[{ name: 'Minutos', color: 'var(--muted)', values: tm.sessions.map((e) => e.treadmill.min) }]}
-              colors={tm.sessions.map((e) => RATING.find((r) => r.id === e.treadmill.rating)?.color ?? 'var(--muted)')}
+              series={[{ name: 'Minutos', color: '', values: tm.sessions.map((e) => e.treadmill.min) }]}
+              colors={tm.sessions.map((e) => RATING.find((r) => r.id === e.treadmill.rating)?.color ?? 'var(--surface-2)')}
             />
             <div className="legend">
               {RATING.map((r) => (
@@ -400,8 +534,8 @@ export default function Report() {
               label="Dolor a las 24 h con y sin cinta"
               labels={['Con cinta', 'Sin cinta']}
               max={10}
-              series={[{ name: 'Dolor', color: 'var(--c2)', values: [tm.knee24WithTreadmill, tm.knee24WithoutTreadmill] }]}
-              colors={['var(--c2)', 'var(--muted)']}
+              series={[{ name: 'Dolor', color: '', values: [tm.knee24WithTreadmill, tm.knee24WithoutTreadmill] }]}
+              colors={['var(--p3)', 'var(--p2)']}
               height={130}
             />
           </>
@@ -411,8 +545,8 @@ export default function Report() {
       <Q n={5} title="Sensaciones con cada día" answer={feelAnswer}>
         {feel.days.length > 0 && (
           <div className="meters">
-            {feel.days.map((d) => (
-              <MeterRow key={d.key} label={`${d.name}${d.sessions > 1 ? ` (${d.sessions})` : ''}`} value={d.avgFeel} max={5} />
+            {feel.days.map((d, i) => (
+              <MeterRow key={d.key} label={`${d.name}${d.sessions > 1 ? ` (${d.sessions})` : ''}`} value={d.avgFeel} max={5} color={PASTEL[Math.max(0, data.config.days.findIndex((c) => c.id === d.key) >= 0 ? data.config.days.findIndex((c) => c.id === d.key) : i) % PASTEL.length]} />
             ))}
           </div>
         )}
@@ -433,6 +567,17 @@ export default function Report() {
           </ul>
         )}
       </Q>
+
+      {week && (
+        <WeekData
+          label={`semana ${week.n}`}
+          entries={es}
+          loads={data.loads.filter((l) => {
+            const t = new Date(`${l.date}T12:00:00`).getTime();
+            return t >= week.from && t < week.to;
+          })}
+        />
+      )}
 
       {week && es.length > 0 && (
         <p className="hint center">
