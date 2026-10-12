@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PencilLine, Plus, Trash2, X } from 'lucide-react';
-import type { DayDef, Entry, ExerciseLog, Treadmill, TreadmillRating } from '../types';
+import type { DayDef, Entry, ExerciseLog, Treadmill, TreadmillRating, TreadmillSegment } from '../types';
+import { EMPTY_SEGMENT, finalizeTreadmill, segmentsOf, summarizeSegments } from '../lib/treadmill';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import { lastLog, loadSessions, localDate, normName, pending24h, suggestDay } from '../lib/report';
@@ -33,7 +34,7 @@ export default function EntryForm() {
   const days = data.config.days;
 
   const [draft, setDraft] = useState<Entry>(() => {
-    if (existing) return { ...existing, exercises: existing.exercises.map((x) => ({ ...x })) };
+    if (existing) return { ...existing, exercises: existing.exercises.map((x) => ({ ...x })), treadmill: { ...existing.treadmill, segments: segmentsOf(existing.treadmill) } };
     const day = suggestDay(data.config, data.entries) ?? undefined;
     return {
       id: uid(),
@@ -44,7 +45,7 @@ export default function EntryForm() {
       kneeDuring: null,
       knee24h: null,
       exercises: rowsFor(day),
-      treadmill: { ...NO_TREADMILL },
+      treadmill: { ...NO_TREADMILL, segments: [{ ...EMPTY_SEGMENT }] },
       energy: null,
       sleepHours: null,
       sleepQuality: null,
@@ -66,6 +67,9 @@ export default function EntryForm() {
   const set = <K extends keyof Entry>(k: K, v: Entry[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const setEx = (i: number, patch: Partial<ExerciseLog>) => setDraft((d) => ({ ...d, exercises: d.exercises.map((x, j) => (j === i ? { ...x, ...patch } : x)) }));
   const setTm = (patch: Partial<Treadmill>) => setDraft((d) => ({ ...d, treadmill: { ...d.treadmill, ...patch } }));
+  const segs = draft.treadmill.segments ?? [{ ...EMPTY_SEGMENT }];
+  const setSegs = (fn: (s: TreadmillSegment[]) => TreadmillSegment[]) => setDraft((d) => ({ ...d, treadmill: { ...d.treadmill, segments: fn(d.treadmill.segments ?? [{ ...EMPTY_SEGMENT }]) } }));
+  const setSeg = (i: number, patch: Partial<TreadmillSegment>) => setSegs((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
   const dateKey = localDate(draft.at);
   const imported = data.loads.find((l) => l.date === dateKey);
@@ -190,7 +194,7 @@ export default function EntryForm() {
         ...draft,
         // Si ese día hay cargas importadas, mandan esas: no se guardan también a mano.
         exercises: imported ? [] : draft.exercises.map((x) => ({ ...x, name: x.name.trim() })).filter((x) => x.name && (x.kg != null || x.reps != null)),
-        treadmill: draft.treadmill.done ? draft.treadmill : { ...NO_TREADMILL },
+        treadmill: draft.treadmill.done ? finalizeTreadmill(draft.treadmill) : { ...NO_TREADMILL },
       };
       await saveDue();
       await saveEntry(entry);
@@ -366,11 +370,29 @@ export default function EntryForm() {
         />
         {tm.done && (
           <>
-            <div className="tm-fields">
-              <NumField label="Tiempo" suffix="min" value={tm.min} onChange={(v) => setTm({ min: v })} />
-              <NumField label="Velocidad" suffix="km/h" value={tm.speed} onChange={(v) => setTm({ speed: v })} />
-              <NumField label="Inclinación" suffix="%" value={tm.incline} onChange={(v) => setTm({ incline: v })} />
+            <div className="tm-segs">
+              {segs.map((s, i) => (
+                <div className="tm-seg" key={i}>
+                  {segs.length > 1 && (
+                    <div className="tm-seg-head">
+                      <span className="field-label">Tramo {i + 1}</span>
+                      <button type="button" className="icon-btn xs" aria-label={`Quitar tramo ${i + 1}`} onClick={() => setSegs((x) => x.filter((_, j) => j !== i))}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="tm-fields">
+                    <NumField label="Tiempo" suffix="min" value={s.min} onChange={(v) => setSeg(i, { min: v })} />
+                    <NumField label="Velocidad" suffix="km/h" value={s.speed} onChange={(v) => setSeg(i, { speed: v })} />
+                    <NumField label="Inclinación" suffix="%" value={s.incline} onChange={(v) => setSeg(i, { incline: v })} />
+                  </div>
+                </div>
+              ))}
             </div>
+            <button type="button" className="link-btn" onClick={() => setSegs((x) => [...x, { ...EMPTY_SEGMENT }])}>
+              <Plus size={16} /> Añadir tramo
+            </button>
+            {segs.length > 1 && <TmTotal segs={segs} />}
             <span className="field-label">¿Cómo de exigente fue?</span>
             <Segmented<TreadmillRating>
               label="Exigencia de la cinta"
@@ -410,4 +432,13 @@ export default function EntryForm() {
       </div>
     </div>
   );
+}
+
+/** Resumen de varios tramos: minutos totales y medias ponderadas por tiempo. */
+function TmTotal({ segs }: { segs: TreadmillSegment[] }) {
+  const t = summarizeSegments(segs);
+  if (t.min == null && t.speed == null && t.incline == null) return null;
+  const n = (v: number) => String(Math.round(v * 10) / 10).replace('.', ',');
+  const parts = [t.min != null ? `${n(t.min)} min` : '', t.speed != null ? `media ${n(t.speed)} km/h` : '', t.incline != null ? `${n(t.incline)} % de inclinación` : ''].filter(Boolean);
+  return <p className="hint">Total: {parts.join(' · ')}</p>;
 }

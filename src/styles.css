@@ -503,3 +503,9 @@ details.more[open] > summary::before { transform: rotate(90deg); }
   .list.compact a { text-decoration: none; color: var(--text); font-weight: 600; }
   .hint.center { margin-top: 2mm; }
 }
+
+/* Tramos de cinta */
+.tm-segs { display: flex; flex-direction: column; gap: 12px; }
+.tm-seg { display: flex; flex-direction: column; gap: 6px; }
+.tm-seg + .tm-seg { padding-top: 12px; border-top: 1px solid var(--line); }
+.tm-seg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
