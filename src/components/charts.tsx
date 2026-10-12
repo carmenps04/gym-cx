@@ -1,90 +1,230 @@
-import { fmtNum } from '../lib/util';
+// Gráficas SVG sencillas, sin librerías: todas usan los colores del tema (claro/oscuro).
 
-export function BarChart({ data, unit, height = 150 }: { data: { label: string; value: number }[]; unit?: string; height?: number }) {
-  const w = 320;
-  const pad = { t: 18, b: 22, l: 4, r: 4 };
-  const max = Math.max(1, ...data.map((d) => d.value));
-  const bw = (w - pad.l - pad.r) / data.length;
-  const ih = height - pad.t - pad.b;
+export interface Series {
+  name: string;
+  /** Variable CSS del color, p. ej. 'var(--accent)'. */
+  color: string;
+  values: (number | null)[];
+  dashed?: boolean;
+}
+
+const W = 340;
+const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ','));
+
+function Legend({ series }: { series: { name: string; color: string; dashed?: boolean }[] }) {
+  if (series.length < 2) return null;
   return (
-    <svg className="chart" viewBox={`0 0 ${w} ${height}`} role="img" aria-label="Gráfico de barras">
-      {data.map((d, i) => {
-        const h = (d.value / max) * ih;
-        const x = pad.l + i * bw + bw * 0.16;
-        const last = i === data.length - 1;
-        return (
-          <g key={i}>
-            <rect x={x} y={pad.t + ih - h} width={bw * 0.68} height={Math.max(h, d.value > 0 ? 2 : 0)} rx={3} className={last ? 'bar bar-now' : 'bar'} />
-            {d.value > 0 && (
-              <text x={x + bw * 0.34} y={pad.t + ih - h - 4} textAnchor="middle" className="chart-val">
-                {fmtNum(d.value)}
-              </text>
-            )}
-            <text x={x + bw * 0.34} y={height - 6} textAnchor="middle" className="chart-lbl">
-              {d.label}
-            </text>
-          </g>
-        );
-      })}
-      <line x1={pad.l} x2={w - pad.r} y1={pad.t + ih} y2={pad.t + ih} className="chart-axis" />
-      {unit && (
-        <text x={w - pad.r} y={10} textAnchor="end" className="chart-lbl">
-          {unit}
-        </text>
-      )}
-    </svg>
+    <figcaption className="legend">
+      {series.map((s) => (
+        <span key={s.name}>
+          <i style={s.dashed ? { borderColor: s.color } : { background: s.color }} className={s.dashed ? 'dashed' : ''} />
+          {s.name}
+        </span>
+      ))}
+    </figcaption>
   );
 }
 
-export function LineChart({ points, unit, height = 170 }: { points: { x: number; y: number }[]; unit?: string; height?: number }) {
-  const w = 320;
-  const pad = { t: 16, b: 24, l: 34, r: 12 };
-  if (points.length === 0) return null;
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  let minY = Math.min(...ys);
-  let maxY = Math.max(...ys);
-  if (minY === maxY) {
-    minY -= 1;
-    maxY += 1;
-  }
-  const span = maxY - minY;
-  minY -= span * 0.1;
-  maxY += span * 0.1;
-  const X = (x: number) => pad.l + (maxX === minX ? (w - pad.l - pad.r) / 2 : ((x - minX) / (maxX - minX)) * (w - pad.l - pad.r));
-  const Y = (y: number) => pad.t + (1 - (y - minY) / (maxY - minY)) * (height - pad.t - pad.b);
-  const path = points.map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
-  const fmtDate = (t: number) => new Date(t).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-  const ticks = [minY + (maxY - minY) * 0.1, (minY + maxY) / 2, maxY - (maxY - minY) * 0.1];
+function ticksFor(min: number, max: number): number[] {
+  const span = max - min;
+  const step = span > 10 ? Math.ceil(span / 5 / 5) * 5 : span > 5 ? 2 : 1;
+  const out: number[] = [];
+  for (let v = min; v <= max + 1e-9; v += step) out.push(v);
+  return out;
+}
+
+/** Etiquetas del eje X: se saltan algunas si no caben. */
+function XLabels({ labels, x, y }: { labels: string[]; x: (i: number) => number; y: number }) {
+  const every = Math.max(1, Math.ceil(labels.length / 7));
   return (
-    <svg className="chart" viewBox={`0 0 ${w} ${height}`} role="img" aria-label="Gráfico de evolución">
-      {ticks.map((t, i) => (
-        <g key={i}>
-          <line x1={pad.l} x2={w - pad.r} y1={Y(t)} y2={Y(t)} className="chart-grid" />
-          <text x={pad.l - 6} y={Y(t) + 3} textAnchor="end" className="chart-lbl">
-            {fmtNum(t)}
+    <>
+      {labels.map((l, i) =>
+        i % every === 0 || i === labels.length - 1 ? (
+          <text key={i} x={x(i)} y={y} className="tick" textAnchor="middle">
+            {l}
           </text>
-        </g>
-      ))}
-      {points.length > 1 && <path d={path} className="line" fill="none" />}
-      {points.map((p, i) => (
-        <circle key={i} cx={X(p.x)} cy={Y(p.y)} r={i === points.length - 1 ? 5 : 3.5} className={i === points.length - 1 ? 'dot dot-now' : 'dot'} />
-      ))}
-      <text x={pad.l} y={height - 6} className="chart-lbl">
-        {fmtDate(minX)}
-      </text>
-      {maxX !== minX && (
-        <text x={w - pad.r} y={height - 6} textAnchor="end" className="chart-lbl">
-          {fmtDate(maxX)}
-        </text>
+        ) : null,
       )}
-      {unit && (
-        <text x={pad.l} y={9} className="chart-lbl">
-          {unit}
-        </text>
-      )}
-    </svg>
+    </>
+  );
+}
+
+/** Líneas con escala fija (0–10 o 1–5). Los huecos (null) cortan la línea. */
+export function LineChart({ labels, series, min, max, height = 170, label }: { labels: string[]; series: Series[]; min: number; max: number; height?: number; label: string }) {
+  const H = height;
+  const L = 24, R = 10, T = 10, B = 22;
+  const n = labels.length;
+  const x = (i: number) => (n <= 1 ? L + (W - L - R) / 2 : L + (i * (W - L - R)) / (n - 1));
+  const y = (v: number) => T + ((max - v) * (H - T - B)) / (max - min);
+  return (
+    <figure className="chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+        {ticksFor(min, max).map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} className="grid" />
+            <text x={L - 6} y={y(t) + 3.5} className="tick" textAnchor="end">
+              {t}
+            </text>
+          </g>
+        ))}
+        <XLabels labels={labels} x={x} y={H - 6} />
+        {series.map((s) => {
+          const segs: string[] = [];
+          let cur = '';
+          s.values.forEach((v, i) => {
+            if (v == null) {
+              if (cur) segs.push(cur);
+              cur = '';
+            } else cur += `${cur ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+          });
+          if (cur) segs.push(cur);
+          return (
+            <g key={s.name}>
+              {segs.map((d, k) => (
+                <path key={k} d={d} fill="none" stroke={s.color} strokeWidth={2.2} strokeDasharray={s.dashed ? '5 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />
+              ))}
+              {s.values.map((v, i) => (v == null ? null : <circle key={i} cx={x(i)} cy={y(v)} r={3.2} fill={s.color} />))}
+            </g>
+          );
+        })}
+      </svg>
+      <Legend series={series} />
+    </figure>
+  );
+}
+
+/** Barras verticales agrupadas. Con una sola serie, «colors» permite colorear cada barra. */
+export function BarChart({ labels, series, max, height = 170, label, unit = '', colors }: { labels: string[]; series: Series[]; max: number; height?: number; label: string; unit?: string; colors?: string[] }) {
+  const H = height;
+  const L = 24, R = 6, T = 14, B = 22;
+  const n = labels.length;
+  const band = (W - L - R) / Math.max(1, n);
+  const gap = Math.min(10, band * 0.25);
+  const bw = Math.min(26, (band - gap) / series.length);
+  const y = (v: number) => T + ((max - v) * (H - T - B)) / max;
+  const cx = (i: number) => L + band * i + band / 2;
+  return (
+    <figure className="chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+        {ticksFor(0, max).map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} className="grid" />
+            <text x={L - 6} y={y(t) + 3.5} className="tick" textAnchor="end">
+              {t}
+            </text>
+          </g>
+        ))}
+        <XLabels labels={labels} x={cx} y={H - 6} />
+        {series.map((s, k) =>
+          s.values.map((v, i) => {
+            if (v == null) return null;
+            const x0 = cx(i) - (bw * series.length) / 2 + k * bw;
+            const h = Math.max(1.5, y(0) - y(Math.min(v, max)));
+            const fill = colors && series.length === 1 ? colors[i] : s.color;
+            return (
+              <g key={`${k}-${i}`}>
+                <rect x={x0 + 1} y={y(0) - h} width={bw - 2} height={h} rx={3} fill={fill} />
+                {n * series.length <= 14 && (
+                  <text x={x0 + bw / 2} y={y(0) - h - 3} className="bar-val" textAnchor="middle">
+                    {fmt(v)}
+                    {unit}
+                  </text>
+                )}
+              </g>
+            );
+          }),
+        )}
+      </svg>
+      <Legend series={series} />
+    </figure>
+  );
+}
+
+/** Barras apiladas por categoría (p. ej. valoraciones de la cinta por semana). */
+export function StackedBars({ labels, stacks, height = 150, label }: { labels: string[]; stacks: Series[]; height?: number; label: string }) {
+  const H = height;
+  const L = 24, R = 6, T = 10, B = 22;
+  const n = labels.length;
+  const totals = labels.map((_, i) => stacks.reduce((a, s) => a + (s.values[i] ?? 0), 0));
+  const max = Math.max(1, ...totals);
+  const band = (W - L - R) / Math.max(1, n);
+  const bw = Math.min(30, band * 0.6);
+  const y = (v: number) => T + ((max - v) * (H - T - B)) / max;
+  const cx = (i: number) => L + band * i + band / 2;
+  return (
+    <figure className="chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+        {ticksFor(0, max).map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} className="grid" />
+            <text x={L - 6} y={y(t) + 3.5} className="tick" textAnchor="end">
+              {t}
+            </text>
+          </g>
+        ))}
+        <XLabels labels={labels} x={cx} y={H - 6} />
+        {labels.map((_, i) => {
+          let acc = 0;
+          return (
+            <g key={i}>
+              {stacks.map((s) => {
+                const v = s.values[i] ?? 0;
+                if (!v) return null;
+                const top = y(acc + v);
+                const h = y(acc) - top;
+                acc += v;
+                return <rect key={s.name} x={cx(i) - bw / 2} y={top} width={bw} height={Math.max(0, h - 1)} rx={2} fill={s.color} />;
+              })}
+            </g>
+          );
+        })}
+      </svg>
+      <Legend series={stacks} />
+    </figure>
+  );
+}
+
+export interface DeltaItem {
+  label: string;
+  /** Cambio en % (positivo = mejora). */
+  pct: number;
+  text: string;
+  tone: 'up' | 'down' | 'flat' | 'stall';
+}
+
+/** Barras horizontales centradas en cero: cambio de carga por ejercicio. */
+export function DeltaBars({ items, label }: { items: DeltaItem[]; label: string }) {
+  const maxAbs = Math.max(10, ...items.map((i) => Math.abs(i.pct)));
+  return (
+    <figure className="chart delta" role="img" aria-label={label}>
+      {items.map((it) => {
+        const w = (Math.abs(it.pct) / maxAbs) * 50;
+        return (
+          <div key={it.label} className="delta-row">
+            <span className="delta-label">{it.label}</span>
+            <span className="delta-track">
+              <span className="delta-zero" />
+              {it.pct !== 0 && <span className={`delta-bar ${it.tone}`} style={it.pct > 0 ? { left: '50%', width: `${w}%` } : { right: '50%', width: `${w}%` }} />}
+              {it.pct === 0 && <span className={`delta-dot ${it.tone}`} />}
+            </span>
+            <span className={`delta-text ${it.tone}`}>{it.text}</span>
+          </div>
+        );
+      })}
+    </figure>
+  );
+}
+
+/** Barra horizontal 0–max para comparar medias. */
+export function MeterRow({ label, value, max, suffix = '' }: { label: string; value: number | null; max: number; suffix?: string }) {
+  const pct = value == null ? 0 : Math.max(0, Math.min(100, (value / max) * 100));
+  return (
+    <div className="meter-row">
+      <span className="meter-label">{label}</span>
+      <span className="meter">
+        <span style={{ width: `${pct}%` }} />
+      </span>
+      <span className="meter-value">{value == null ? '—' : `${value.toFixed(1).replace('.', ',')}${suffix}`}</span>
+    </div>
   );
 }

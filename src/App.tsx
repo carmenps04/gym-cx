@@ -1,29 +1,25 @@
 import { useEffect } from 'react';
-import { Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom';
-import { Dumbbell, Settings as Gear, TrendingUp, User } from 'lucide-react';
+import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { BarChart3, Home as HomeIcon, Settings as Gear } from 'lucide-react';
 import { useData } from './state/data';
-import Train from './pages/Train';
-import Progress from './pages/Progress';
-import Profile from './pages/Profile';
-import Settings from './pages/Settings';
-import RoutineWizard from './pages/RoutineWizard';
-import RoutineView from './pages/RoutineView';
-import DayPicker from './pages/DayPicker';
-import Picker from './pages/Picker';
-import ExercisePage from './pages/ExercisePage';
-import Session from './pages/Session';
+import { localDate } from './lib/report';
+import Home from './pages/Home';
+import EntryForm from './pages/EntryForm';
+import Knee24 from './pages/Knee24';
+import Report from './pages/Report';
+import Settings, { applyTheme, readTheme } from './pages/Settings';
+import DaysEditor from './pages/DaysEditor';
 
 function Tabs() {
   const items = [
-    { to: '/progreso', label: 'Progreso', icon: TrendingUp },
-    { to: '/entrenar', label: 'Entrenamiento', icon: Dumbbell },
-    { to: '/perfil', label: 'Perfil', icon: User },
+    { to: '/inicio', label: 'Inicio', icon: HomeIcon },
+    { to: '/informe', label: 'Informe', icon: BarChart3 },
     { to: '/ajustes', label: 'Ajustes', icon: Gear },
   ];
   return (
     <nav className="tabs" aria-label="Secciones">
       {items.map(({ to, label, icon: Icon }) => (
-        <NavLink key={to} to={to} className={({ isActive }) => `tab${isActive ? ' on' : ''}`}>
+        <NavLink key={to} to={to} end className={({ isActive }) => `tab${isActive ? ' on' : ''}`}>
           <Icon size={22} strokeWidth={2.2} aria-hidden="true" />
           <span>{label}</span>
         </NavLink>
@@ -53,23 +49,38 @@ function Plain() {
   );
 }
 
+/** Una instancia nueva del formulario por sesión, para no arrastrar el borrador de otra. */
+function EditEntry() {
+  const { id } = useParams();
+  return <EntryForm key={id} />;
+}
+
+/**
+ * Al abrir la app: si no hay sesión registrada hoy, directamente el cuestionario; si ya la hay, el informe.
+ * La primera vez (sin días de rutina) va a la pantalla de bienvenida.
+ */
+function Start() {
+  const { data } = useData();
+  if (data.config.days.length === 0) return <Navigate to="/inicio" replace />;
+  const today = localDate(Date.now());
+  const done = data.entries.some((e) => localDate(e.at) === today);
+  return <Navigate to={done ? '/informe' : '/nueva'} replace />;
+}
+
 function ScrollTop() {
   const { pathname } = useLocation();
-    useEffect(() => {
-     window.scrollTo(0, 0);
-   }, [pathname]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
   return null;
 }
 
 export default function App() {
-  const { data, ready } = useData();
-  const theme = data.meta.settings.theme;
+  const { ready } = useData();
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', theme);
-  }, [theme]);
+    applyTheme(readTheme());
+  }, []);
 
   if (!ready) return <div className="splash" role="status">Cargando…</div>;
 
@@ -78,21 +89,18 @@ export default function App() {
       <ScrollTop />
       <Routes>
         <Route element={<Shell />}>
-          <Route path="/entrenar" element={<Train />} />
-          <Route path="/progreso" element={<Progress />} />
-          <Route path="/perfil" element={<Profile />} />
+          <Route path="/inicio" element={<Home />} />
+          <Route path="/informe" element={<Report />} />
           <Route path="/ajustes" element={<Settings />} />
         </Route>
         <Route element={<Plain />}>
-          <Route path="/rutina/nueva" element={<RoutineWizard />} />
-          <Route path="/rutina/:rid" element={<RoutineView />} />
-          <Route path="/rutina/:rid/editar" element={<RoutineWizard />} />
-          <Route path="/rutina/:rid/entrenar" element={<DayPicker />} />
-          <Route path="/explorar" element={<Picker />} />
-          <Route path="/ejercicio/:eid" element={<ExercisePage />} />
-          <Route path="/sesion/:rid/:did" element={<Session />} />
+          <Route path="/nueva" element={<EntryForm />} />
+          <Route path="/sesion/:id" element={<EditEntry />} />
+          <Route path="/rodilla/:id" element={<Knee24 />} />
+          <Route path="/ajustes/dias" element={<DaysEditor />} />
         </Route>
-        <Route path="*" element={<Navigate to="/entrenar" replace />} />
+        <Route path="/" element={<Start />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );

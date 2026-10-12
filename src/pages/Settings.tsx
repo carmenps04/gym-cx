@@ -1,134 +1,260 @@
-import { useRef } from 'react';
-import { Download, Upload } from 'lucide-react';
-import { Chip, PageHeader, Segmented, Stepper } from '../components/ui';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronRight, Copy } from 'lucide-react';
+import { authMessage, useAuth } from '../state/auth';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
-import { EQUIPMENT } from '../lib/catalog';
-import { emptyData, normalizeMeta } from '../state/backends';
-import { clearDraft } from '../lib/routine';
-import { isoDate } from '../lib/util';
-import type { AppData, Settings as SettingsT } from '../types';
+import { download, isBackup, loadsCsv, sessionsCsv } from '../lib/export';
+import { appBaseUrl, fmtDate } from '../lib/util';
+import { NbImportButton } from '../components/NbImport';
+import { localDate, programStart } from '../lib/report';
+import { Card, PageHeader, Segmented } from '../components/ui';
 
-function isBackup(x: unknown): x is Partial<AppData> & { routines: AppData['routines']; sessions: AppData['sessions'] } {
-  if (!x || typeof x !== 'object') return false;
-  const o = x as Record<string, unknown>;
+export type Theme = 'system' | 'light' | 'dark';
+const THEME_KEY = 'diario.theme';
+
+export function readTheme(): Theme {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === 'light' || t === 'dark' ? t : 'system';
+  } catch {
+    return 'system';
+  }
+}
+export function applyTheme(t: Theme): void {
+  const root = document.documentElement;
+  if (t === 'system') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', t);
+}
+
+function Account() {
+  const auth = useAuth();
+  const ui = useUi();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } catch (e) {
+      ui.toast(authMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!auth.enabled) {
+    return (
+      <Card title="Cuenta">
+        <p className="card-sub">Esta versión no tiene la nube configurada; los datos se guardan solo en este navegador.</p>
+      </Card>
+    );
+  }
+  if (auth.user) {
+    return (
+      <Card title="Cuenta">
+        <p className="card-sub">
+          Sesión iniciada como <b>{auth.user.email ?? auth.user.name}</b>. Los datos se sincronizan entre tus dispositivos.
+        </p>
+        <button className="btn block" onClick={() => run(auth.signOut)} disabled={busy}>
+          Cerrar sesión
+        </button>
+      </Card>
+    );
+  }
   return (
-    Array.isArray(o.routines) &&
-    Array.isArray(o.sessions) &&
-    o.routines.every((r) => r && typeof (r as { id?: unknown }).id === 'string' && Array.isArray((r as { days?: unknown }).days)) &&
-    o.sessions.every((s) => s && typeof (s as { id?: unknown }).id === 'string' && Array.isArray((s as { entries?: unknown }).entries))
+    <Card title="Cuenta" sub="Usa la misma cuenta que en la versión anterior de la app.">
+      <button className="btn block" onClick={() => run(auth.signInGoogle)} disabled={busy}>
+        Continuar con Google
+      </button>
+      <form
+        className="auth-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(() => (creating ? auth.signUpEmail(email, password) : auth.signInEmail(email, password)));
+        }}
+      >
+        <input type="email" autoComplete="email" placeholder="Correo" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input type="password" autoComplete={creating ? 'new-password' : 'current-password'} placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button className="btn primary block" type="submit" disabled={busy}>
+          {creating ? 'Crear cuenta' : 'Iniciar sesión'}
+        </button>
+      </form>
+      <div className="auth-links">
+        <button className="link-btn" onClick={() => setCreating((c) => !c)}>
+          {creating ? 'Ya tengo cuenta' : 'Crear cuenta con correo'}
+        </button>
+        {!creating && (
+          <button
+            className="link-btn"
+            onClick={() =>
+              run(async () => {
+                await auth.resetPassword(email);
+                ui.toast('Te he enviado un correo para cambiar la contraseña.');
+              })
+            }
+          >
+            He olvidado la contraseña
+          </button>
+        )}
+      </div>
+    </Card>
   );
 }
 
 export default function Settings() {
-  const { data, updateMeta, replaceAll, mode } = useData();
+  const { data, mode, syncError, replaceAll, saveConfig } = useData();
   const ui = useUi();
+  const [theme, setTheme] = useState<Theme>(readTheme);
   const fileRef = useRef<HTMLInputElement>(null);
-  const s = data.meta.settings;
-  const patch = (p: Partial<SettingsT>) => updateMeta((m) => ({ ...m, settings: { ...m.settings, ...p } }));
+  const url = appBaseUrl();
 
-  const exportData = () => {
-    const blob = new Blob([JSON.stringify({ app: 'gym', version: 1, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `gym-copia-${isoDate(new Date())}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
-  const importData = async (file: File) => {
+  useEffect(() => {
+    applyTheme(theme);
     try {
-      const json: unknown = JSON.parse(await file.text());
-      if (!isBackup(json)) throw new Error('formato');
-      const ok = await ui.confirm({
-        title: 'Importar copia de seguridad',
-        message: `Se reemplazarán tus datos actuales por los del archivo (${json.routines.length} rutinas, ${json.sessions.length} entrenamientos).${mode === 'cloud' ? ' También se reemplazarán en la nube.' : ''}`,
-        confirmLabel: 'Importar',
-        danger: true,
-      });
-      if (!ok) return;
-      await replaceAll({ routines: json.routines, sessions: json.sessions, meta: normalizeMeta(json.meta) });
-      ui.toast('Copia importada.');
+      localStorage.setItem(THEME_KEY, theme);
     } catch {
-      ui.toast('El archivo no es una copia de seguridad válida.');
-    } finally {
-      if (fileRef.current) fileRef.current.value = '';
+      /* sin almacenamiento: el tema dura hasta cerrar */
+    }
+  }, [theme]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      ui.toast('Enlace copiado.');
+    } catch {
+      ui.toast('No se pudo copiar; mantén pulsado el enlace para copiarlo.');
     }
   };
 
-  const wipe = async () => {
-    const ok = await ui.confirm({
-      title: 'Borrar todos mis datos',
-      message: `Se eliminarán rutinas, entrenamientos, peso y ajustes${mode === 'cloud' ? ', también en la nube' : ' de este dispositivo'}. No se puede deshacer. Si dudas, exporta antes una copia.`,
-      confirmLabel: 'Borrar todo',
-      danger: true,
-    });
-    if (!ok) return;
-    clearDraft();
-    sessionStorage.removeItem('gym.search.v1');
-    await replaceAll(emptyData());
-    ui.toast('Datos borrados.');
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  const restore = async (file: File) => {
+    try {
+      const j = JSON.parse(await file.text());
+      if (!isBackup(j)) {
+        ui.toast('Ese archivo no es una copia de esta app.');
+        return;
+      }
+      const ok = await ui.confirm({
+        title: '¿Restaurar la copia?',
+        message: `Se sustituirán tus ${data.entries.length} sesiones actuales por las ${j.entries.length} de la copia.`,
+        confirmLabel: 'Restaurar',
+        danger: true,
+      });
+      if (!ok) return;
+      await replaceAll({ ...j, loads: j.loads ?? [] });
+      ui.toast('Copia restaurada.');
+    } catch {
+      ui.toast('No se pudo leer el archivo.');
+    }
   };
 
   return (
-    <>
+    <div className="page">
       <PageHeader title="Ajustes" />
 
-      <section className="card">
-        <h2 className="h3">Apariencia</h2>
-        <Segmented<SettingsT['theme']> label="Tema" value={s.theme} onChange={(theme) => patch({ theme })} options={[{ id: 'system', label: 'Automático' }, { id: 'light', label: 'Claro' }, { id: 'dark', label: 'Oscuro' }]} />
-      </section>
+      <Account />
+      {syncError && mode === 'cloud' && <p className="hint warn">Problema al sincronizar: {syncError}</p>}
 
-      <section className="card">
-        <h2 className="h3">Entrenamiento</h2>
-        <div className="split">
-          <span>Unidad de peso</span>
-          <Segmented<SettingsT['units']> label="Unidad de peso" value={s.units} onChange={(units) => patch({ units })} options={[{ id: 'kg', label: 'kg' }, { id: 'lb', label: 'lb' }]} />
-        </div>
-        <div className="split gap-top">
-          <span>Descanso entre series</span>
-          <Stepper label="segundos de descanso" value={s.restSec} min={15} max={600} step={15} onChange={(restSec) => patch({ restSec })} suffix=" s" />
-        </div>
-      </section>
+      <Card
+        title="Nivel Bestia"
+        sub={
+          data.config.nbImportedAt
+            ? `Última importación: ${fmtDate(data.config.nbImportedAt)}${data.config.nbBackupAt ? ` (copia del ${fmtDate(new Date(data.config.nbBackupAt).getTime())})` : ''}. ${data.loads.length} entrenamientos guardados.`
+            : 'Trae las cargas de todos tus entrenamientos y los días de tu rutina desde la copia de Nivel Bestia (Ajustes → Guardar copia).'
+        }
+      >
+        <NbImportButton label={data.config.nbImportedAt ? 'Importar copia nueva' : 'Importar de Nivel Bestia'} />
+        <p className="hint">Solo se leen las series y la rutina. El resto de la copia (peso corporal, fecha de nacimiento, puntos…) no se guarda.</p>
+      </Card>
 
-      <section className="card">
-        <h2 className="h3">Mi material</h2>
-        <p className="muted">Marca lo que tienes a mano. En el buscador de ejercicios podrás aplicarlo con un toque.</p>
-        <div className="chips">
-          {EQUIPMENT.map((e) => (
-            <Chip key={e.id} active={s.equipment.includes(e.id)} onClick={() => patch({ equipment: s.equipment.includes(e.id) ? s.equipment.filter((x) => x !== e.id) : [...s.equipment, e.id] })}>
-              {e.label}
-            </Chip>
-          ))}
+      <Link to="/ajustes/dias" className="card row-link">
+        <div>
+          <h2 className="h3">Días de la rutina</h2>
+          <p className="card-sub">
+            {data.config.days.length ? `${data.config.days.length} días: ${data.config.days.map((d) => d.name).join(', ')}` : 'Sin configurar'}
+          </p>
         </div>
-      </section>
+        <ChevronRight size={20} />
+      </Link>
 
-      <section className="card">
-        <h2 className="h3">Copia de seguridad</h2>
-        <p className="muted">Descarga tus rutinas, entrenamientos y ajustes en un archivo, o restaura una copia anterior.</p>
-        <div className="row">
-          <button className="btn grow" onClick={exportData}>
-            <Download size={16} /> Exportar
+      <Card title="Programa de 6 semanas" sub="La semana 1 empieza el lunes de la fecha que elijas. Si no eliges ninguna, se toma la semana del primer cuestionario.">
+        <label className="field">
+          <span className="field-label">Inicio del programa</span>
+          <input
+            type="date"
+            value={localDate(programStart(data.config, data.entries, Date.now()))}
+            onChange={(e) => {
+              if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) void saveConfig({ ...data.config, programStart: e.target.value });
+            }}
+          />
+        </label>
+      </Card>
+
+      <Card title="Abrir con el Botón de Acción" sub="Para que al terminar en Nivel Bestia baste con pulsar el botón lateral del iPhone.">
+        <div className="copy-row">
+          <code>{url}</code>
+          <button className="icon-btn" onClick={copy} aria-label="Copiar enlace">
+            <Copy size={18} />
           </button>
-          <button className="btn grow" onClick={() => fileRef.current?.click()}>
-            <Upload size={16} /> Importar
+        </div>
+        <ol className="steps">
+          <li>Copia el enlace de arriba.</li>
+          <li>
+            Abre <b>Atajos</b> → <b>+</b> → <b>Añadir acción</b> → busca <b>Abrir URL</b>. Pega el enlace en la acción.
+          </li>
+          <li>Pon de nombre al atajo «Diario gym» y guárdalo.</li>
+          <li>
+            Ve a <b>Ajustes</b> del iPhone → <b>Botón de Acción</b> → desliza hasta <b>Atajo</b> → elige «Diario gym».
+          </li>
+        </ol>
+        <p className="hint">Si ya usas el Botón de Acción para otra cosa, puedes añadir el atajo a la pantalla de inicio desde el propio atajo (Compartir → Añadir a pantalla de inicio).</p>
+      </Card>
+
+      <Card title="Datos" sub="CSV con «;» y coma decimal: se abre directo en Excel en español y en R con read.csv2.">
+        <div className="btn-grid">
+          <button className="btn" disabled={!data.entries.length} onClick={() => download(`sesiones-${stamp}.csv`, sessionsCsv(data.entries), 'text/csv;charset=utf-8')}>
+            Sesiones (CSV)
+          </button>
+          <button className="btn" disabled={!data.entries.length} onClick={() => download(`cargas-${stamp}.csv`, loadsCsv(data.entries), 'text/csv;charset=utf-8')}>
+            Cargas (CSV)
+          </button>
+          <button className="btn" onClick={() => download(`diario-copia-${stamp}.json`, JSON.stringify(data, null, 1), 'application/json')}>
+            Guardar copia
+          </button>
+          <button className="btn" onClick={() => fileRef.current?.click()}>
+            Restaurar copia
           </button>
         </div>
-        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importData(e.target.files[0])} />
-      </section>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void restore(f);
+          }}
+        />
+      </Card>
 
-      <section className="card">
-        <h2 className="h3">Datos</h2>
-        <p className="muted">{mode === 'cloud' ? 'Modo nube: tus datos se sincronizan con tu cuenta.' : 'Modo local: tus datos están solo en este navegador.'}</p>
-        <button className="btn danger block" onClick={wipe}>
-          Borrar todos mis datos
-        </button>
-      </section>
-
-      <p className="credits">
-        Catálogo de ejercicios e imágenes: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener noreferrer">free-exercise-db</a> (dominio público). Los nombres en español se han generado con un glosario y pueden contener errores.
-      </p>
-    </>
+      <Card title="Apariencia">
+        <Segmented<Theme>
+          label="Tema"
+          options={[
+            { id: 'system', label: 'Automático' },
+            { id: 'light', label: 'Claro' },
+            { id: 'dark', label: 'Oscuro' },
+          ]}
+          value={theme}
+          onChange={setTheme}
+        />
+      </Card>
+    </div>
   );
 }

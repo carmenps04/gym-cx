@@ -1,106 +1,74 @@
-// Modelo de datos. Los pesos se guardan siempre en kg; la unidad elegida solo afecta a la vista.
-
-export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = lunes ... 6 = domingo
-
-export interface StrengthItem {
-  kind: 'strength';
-  id: string;
-  exerciseId: string;
-  sets: number;
-  reps: number;
-}
-export interface CardioItem {
-  kind: 'cardio';
-  id: string;
-  cardioId: string;
-  minutes: number;
-  distanceKm?: number;
-}
-export type RoutineItem = StrengthItem | CardioItem;
-
-export interface RoutineDay {
+/** Un día de la rutina (p. ej. «Día 1 · Pierna»), con los ejercicios que se anotan ese día. */
+export interface DayDef {
   id: string;
   name: string;
-  weekdays: Weekday[];
-  items: RoutineItem[];
+  /** Cuenta para la media de dolor de rodilla por sesión de pierna. */
+  isLeg: boolean;
+  exercises: string[];
 }
-export interface Routine {
-  id: string;
-  name: string;
-  days: RoutineDay[];
-  createdAt: number;
+
+export interface Config {
+  days: DayDef[];
   updatedAt: number;
+  /** Última importación de la copia de Nivel Bestia (ms) y fecha de esa copia. */
+  nbImportedAt?: number;
+  nbBackupAt?: string;
+  /** Lunes en que empieza el programa de 6 semanas (AAAA-MM-DD). Si falta, el de la primera sesión. */
+  programStart?: string;
 }
 
-export interface LoggedSet {
-  weight: number; // kg
-  reps: number;
-  done: boolean;
+/** Mejor serie del ejercicio en la sesión. kg null = peso corporal. */
+export interface ExerciseLog {
+  name: string;
+  kg: number | null;
+  reps: number | null;
 }
-export interface StrengthEntry {
-  kind: 'strength';
-  itemId: string;
-  exerciseId: string;
-  sets: LoggedSet[];
-}
-export interface CardioEntry {
-  kind: 'cardio';
-  itemId: string;
-  cardioId: string;
-  minutes: number;
-  distanceKm?: number;
-  done: boolean;
-}
-export type SessionEntry = StrengthEntry | CardioEntry;
 
-export interface Session {
+export type TreadmillRating = 'poco' | 'bien' | 'mucho';
+
+export interface Treadmill {
+  done: boolean;
+  min: number | null;
+  speed: number | null;
+  incline: number | null;
+  rating: TreadmillRating | null;
+}
+
+/** Escalas de 1 a 5 (1 = muy mal, 5 = muy bien). */
+export type Scale5 = 1 | 2 | 3 | 4 | 5;
+
+export interface Entry {
   id: string;
-  routineId: string;
-  routineName: string;
+  /** Momento en que terminó la sesión (ms). */
+  at: number;
   dayId: string;
+  /** Copia del nombre y del tipo del día en ese momento, por si luego se renombra o se borra. */
   dayName: string;
-  startedAt: number;
-  endedAt: number;
-  entries: SessionEntry[];
+  isLeg: boolean;
+  kneeDuring: number | null;
+  knee24h: number | null;
+  exercises: ExerciseLog[];
+  treadmill: Treadmill;
+  energy: Scale5 | null;
+  sleepHours: number | null;
+  sleepQuality: Scale5 | null;
+  recovery: Scale5 | null;
+  dayFeel: Scale5 | null;
+  note: string;
   updatedAt: number;
 }
 
-export type Goal = 'muscle' | 'fat' | 'strength' | 'health';
-export type Level = 'beginner' | 'intermediate' | 'advanced';
+/** Cargas de un día importadas de la copia de Nivel Bestia (mejor serie de cada ejercicio). */
+export interface LoadDay {
+  /** Fecha local AAAA-MM-DD, tal como la guarda Nivel Bestia. */
+  date: string;
+  at: number;
+  exercises: (ExerciseLog & { id: string; sets: number })[];
+  importedAt: number;
+}
 
-export interface Profile {
-  name: string;
-  heightCm?: number;
-  goal?: Goal;
-  level?: Level;
-  weeklyGoal: number;
-}
-export interface WeightEntry {
-  date: string; // YYYY-MM-DD
-  kg: number;
-}
-export interface Settings {
-  units: 'kg' | 'lb';
-  restSec: number;
-  theme: 'system' | 'light' | 'dark';
-  equipment: string[];
-}
-export interface Meta {
-  profile: Profile;
-  settings: Settings;
-  weights: WeightEntry[];
-  videos: Record<string, string>; // exerciseId -> URL de vídeo propia
-  updatedAt: number;
-}
 export interface AppData {
-  routines: Routine[];
-  sessions: Session[];
-  meta: Meta;
-}
-
-export interface Draft {
-  routineId: string;
-  dayId: string;
-  startedAt: number;
-  entries: SessionEntry[];
+  entries: Entry[];
+  config: Config;
+  loads: LoadDay[];
 }

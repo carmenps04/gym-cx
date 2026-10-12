@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AppData, Meta, Routine, Session } from '../types';
+import type { AppData, Config, Entry, LoadDay } from '../types';
 import { useAuth } from './auth';
 import { createCloudBackend, createLocalBackend, emptyData, hasContent, readLocal } from './backends';
 import type { Backend } from './backends';
@@ -11,11 +11,10 @@ interface DataCtx {
   ready: boolean;
   mode: 'local' | 'cloud';
   syncError: string | null;
-  saveRoutine(r: Routine): Promise<void>;
-  deleteRoutine(id: string): Promise<void>;
-  saveSession(s: Session): Promise<void>;
-  deleteSession(id: string): Promise<void>;
-  updateMeta(fn: (m: Meta) => Meta): Promise<void>;
+  saveEntry(e: Entry): Promise<void>;
+  deleteEntry(id: string): Promise<void>;
+  saveConfig(c: Config): Promise<void>;
+  saveLoads(days: LoadDay[]): Promise<void>;
   replaceAll(d: AppData): Promise<void>;
 }
 const Ctx = createContext<DataCtx | null>(null);
@@ -26,8 +25,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const backend = useRef<Backend | null>(null);
-  const latest = useRef<AppData>(data);
-  latest.current = data;
 
   const uid = cloudEnabled && user ? user.uid : null;
 
@@ -37,13 +34,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSyncError(null);
     const b = uid ? createCloudBackend(uid) : createLocalBackend();
     backend.current = b;
-    const flag = uid ? `gym.migrated.${uid}` : '';
+    const flag = uid ? `diario.migrated.${uid}` : '';
     const unsub = b.subscribe(
       (d, info) => {
         setData(d);
         setReady(true);
-        // Primera vez con esta cuenta: si la nube está vacía (confirmado por el servidor) y este
-        // dispositivo tiene datos locales, se suben una sola vez.
+        // Primera vez con esta cuenta: si la nube está vacía y este dispositivo tiene datos sin cuenta, se suben.
         if (uid && info.serverEmpty && !localStorage.getItem(flag)) {
           localStorage.setItem(flag, '1');
           const local = readLocal();
@@ -58,13 +54,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const guard = useCallback(async (fn: (b: Backend) => Promise<void>) => {
     const b = backend.current;
     if (!b) return;
-    try {
-      await fn(b);
-      setSyncError(null);
-    } catch (e) {
-      setSyncError(String((e as Error)?.message ?? e));
-      throw e;
-    }
+    // Con mala cobertura (gimnasio), Firestore guarda al instante en el móvil pero la promesa no se
+    // resuelve hasta que llega al servidor. No se bloquea la pantalla esperando: se sube en segundo plano.
+    const p = fn(b).then(
+      () => setSyncError(null),
+      (e) => {
+        setSyncError(String((e as Error)?.message ?? e));
+        throw e;
+      },
+    );
+    await Promise.race([p, new Promise((r) => setTimeout(r, 1500))]);
+    p.catch(() => undefined);
   }, []);
 
   const value = useMemo<DataCtx>(
@@ -73,12 +73,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       ready,
       mode: uid ? 'cloud' : 'local',
       syncError,
-      saveRoutine: (r) => guard((b) => b.saveRoutine(r)),
-      deleteRoutine: (id) => guard((b) => b.deleteRoutine(id)),
-      saveSession: (s) => guard((b) => b.saveSession(s)),
-      deleteSession: (id) => guard((b) => b.deleteSession(id)),
-      updateMeta: (fn) => guard((b) => b.saveMeta({ ...fn(latest.current.meta), updatedAt: Date.now() })),
-      replaceAll: (d) => guard((b) => b.replaceAll(d)),
+      saveEntry: (e) => guard((b) => b.saveEntry({ ...e, updatedAt: Date.now() })),
+      deleteEntry: (id) => guard((b) => b.deleteEntry(id)),
+      saveConfig: (c) => guard((b) => b.saveConfig({ ...c, updatedAt: Date.now() })),
+      saveLoads: (days) => guard((b) => b.saveLoads(days)),
+      // Restaurar una copia sí espera a terminar: se borra y se reescribe todo.
+      replaceAll: async (d) => {
+        await backend.current?.replaceAll(d);
+      },
     }),
     [data, ready, uid, syncError, guard],
   );

@@ -1,6 +1,6 @@
 {
-  "name": "Gym",
-  "short_name": "Gym",
+  "name": "Diario gym",
+  "short_name": "Diario gym",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#EDE7DA",
