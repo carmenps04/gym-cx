@@ -509,3 +509,29 @@ details.more[open] > summary::before { transform: rotate(90deg); }
 .tm-seg { display: flex; flex-direction: column; gap: 6px; }
 .tm-seg + .tm-seg { padding-top: 12px; border-top: 1px solid var(--line); }
 .tm-seg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* ------------------------------------------------------------------ PDF generado en la app (mismo aspecto que la impresión) */
+.pdf-render {
+  position: fixed; left: -10000px; top: 0; pointer-events: none; z-index: -1;
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f4f6f1; --line: #dfe3d8; --text: #1f2420; --muted: #5d6459;
+  --accent: #a8d38a; --accent-ink: #1d3311; --accent-text: #4a7a2b; --accent-soft: #edf6e4; --ok: #4a7a2b;
+  --line-1: #4a7a2b; --c2: #d07a4f; --c3: #4f86c2;
+  --warn: #9a6a12; --danger: #b3392f; --danger-soft: #fbe4e1; --shadow: none; color-scheme: light;
+  --fs-large: 23px; --fs-title: 17px; --fs-headline: 15px; --fs-body: 14px; --fs-sub: 13.5px; --fs-foot: 12px; --fs-cap: 11.5px;
+  background: #fff; color: var(--text); font-size: 14px;
+}
+.pdf-render .page { gap: 0; }
+.pdf-render .overlay, .pdf-render .tabs, .pdf-render .week-tabs, .pdf-render .saved-banner, .pdf-render .page-header, .pdf-render .pdf-btn, .pdf-render .no-print, .pdf-render .hint.center { display: none !important; }
+.pdf-render .print-only { display: block; }
+.pdf-render .print-head { border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
+.pdf-render .print-head h1 { font-size: 23px; margin: 4px 0; }
+.pdf-render .print-head p { color: var(--muted); font-size: 12.5px; }
+.pdf-render .print-head .print-app { color: var(--accent-text); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11.5px; }
+.pdf-render .card { box-shadow: none; border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; gap: 10px; background: #fff; }
+.pdf-render .chart { max-width: 400px; margin: 0 auto; width: 100%; }
+.pdf-render .chart .tick, .pdf-render .chart .bar-val { font-size: 10px; }
+.pdf-render .stat { padding: 9px 4px; min-height: 0; }
+.pdf-render .stat-value { font-size: 20px; }
+.pdf-render .list.compact a { text-decoration: none; color: var(--text); font-weight: 600; }
+.pdf-actions { grid-template-columns: 1fr; }
+.pdf-actions .btn { gap: 8px; }
