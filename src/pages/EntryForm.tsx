@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2, X } from 'lucide-react';
+import { PencilLine, Plus, Trash2, X } from 'lucide-react';
 import type { DayDef, Entry, ExerciseLog, Treadmill, TreadmillRating } from '../types';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import { lastLog, loadSessions, localDate, normName, pending24h, suggestDay } from '../lib/report';
-import { guessDay } from '../lib/nivelbestia';
+import { NB_NAMES } from '../lib/nivelbestia';
 import { NbImportButton } from '../components/NbImport';
-import type { NbResult } from '../components/NbImport';
+import { OcrImport } from '../components/OcrImport';
 import { fmtDate, fmtLoad, fmtTime, fromLocalInput, toLocalInput, uid } from '../lib/util';
 import { Card, Empty, NumField, PageHeader, PainScale, Scale5, Segmented } from '../components/ui';
 
@@ -56,6 +56,7 @@ export default function EntryForm() {
   });
   const [editingDate, setEditingDate] = useState(false);
   const [newEx, setNewEx] = useState('');
+  const [manualOpen, setManualOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   // Dolor a las 24 h de sesiones anteriores que toca contestar ahora (solo al registrar una sesión nueva).
   const [dueIds] = useState<string[]>(() => (id ? [] : pending24h(data.entries, Date.now()).due.map((e) => e.id)));
@@ -106,16 +107,39 @@ export default function EntryForm() {
 
   const chooseDay = (d: DayDef) => setDraft((x) => ({ ...x, dayId: d.id, dayName: d.name, isLeg: d.isLeg, exercises: rowsFor(d, x.exercises) }));
 
-  // Tras importar: si hay entrenamiento ese día, se elige el día de la rutina que más se parece.
-  const afterImport = (r: NbResult) => {
-    const today = r.loads.find((l) => l.date === dateKey);
-    if (!today) {
-      ui.toast(`La copia no tiene nada registrado el ${fmtDate(draft.at)}. ¿Terminaste la rutina en Nivel Bestia antes de guardar la copia?`);
-      return;
-    }
-    const d = guessDay(r.finalDays, today.exercises.map((x) => x.name));
-    if (d) chooseDay(d);
+  // Nombres que el lector de capturas puede reconocer: los del día, los de toda la rutina,
+  // los ya registrados y los de Nivel Bestia.
+  const knownNames = useMemo(() => {
+    const all = [
+      ...draft.exercises.map((x) => x.name),
+      ...days.flatMap((d) => d.exercises),
+      ...data.loads.flatMap((l) => l.exercises.map((x) => x.name)),
+      ...data.entries.flatMap((e) => e.exercises.map((x) => x.name)),
+      ...Object.values(NB_NAMES),
+    ];
+    const seen = new Set<string>();
+    return all.filter((n) => {
+      const k = normName(n);
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [draft.exercises, days, data.loads, data.entries]);
+
+  /** Vuelca las cargas leídas de las capturas en la lista manual (sin guardar todavía). */
+  const applyOcr = (rows: ExerciseLog[]) => {
+    setDraft((d) => {
+      const exercises = d.exercises.map((x) => ({ ...x }));
+      for (const r of rows) {
+        const i = exercises.findIndex((x) => normName(x.name) === normName(r.name));
+        if (i >= 0) exercises[i] = { ...exercises[i], kg: r.kg, reps: r.reps };
+        else exercises.push({ ...r });
+      }
+      return { ...d, exercises };
+    });
+    setManualOpen(true);
   };
+
 
   const addExercise = () => {
     const name = newEx.trim();
@@ -222,7 +246,7 @@ export default function EntryForm() {
       ))}
 
       <Card title="¿Qué día has hecho?">
-        <div className="chips">
+        <div className="chips days">
           {days.map((d) => (
             <button key={d.id} type="button" className={`chip${draft.dayId === d.id ? ' on' : ''}`} onClick={() => chooseDay(d)}>
               {d.name}
@@ -278,23 +302,20 @@ export default function EntryForm() {
                 );
               })}
             </ul>
-            <NbImportButton className="link-btn" label="Volver a importar" onDone={afterImport} />
           </>
         ) : (
           <>
-            <p className="card-sub">Lo más rápido es traerlas de Nivel Bestia.</p>
-            <ol className="steps small">
-              <li>
-                En Nivel Bestia: <b>Ajustes → Guardar copia</b>.
-              </li>
-              <li>
-                Aquí: <b>Importar</b> y elige el archivo <i>nivel-bestia-…json</i> (está en Descargas).
-              </li>
-            </ol>
-            <NbImportButton onDone={afterImport} />
-            <details className="manual">
-              <summary>O escríbelas a mano</summary>
-              <p className="hint">La mejor serie de cada ejercicio. Deja en blanco los que no hayas hecho; sin kg = peso corporal.</p>
+            <p className="card-sub">La mejor serie de cada ejercicio.</p>
+            <div className="load-choice">
+              <OcrImport known={knownNames} onApply={applyOcr} />
+              <button type="button" className={`choice${manualOpen ? ' on' : ''}`} aria-expanded={manualOpen} onClick={() => setManualOpen((o) => !o)}>
+                <PencilLine size={22} />
+                <span>Escribir a mano</span>
+              </button>
+            </div>
+            {manualOpen && (
+            <div className="manual">
+              <p className="hint">Deja en blanco los que no hayas hecho; sin kg = peso corporal.</p>
               <div className="ex-list">
                 {draft.exercises.map((x, i) => {
                   const prev = previous.get(normName(x.name));
@@ -327,7 +348,8 @@ export default function EntryForm() {
                 </button>
               </div>
               {draft.dayId && <p className="hint">Lo que añadas aquí se guarda en la lista de este día para las próximas veces.</p>}
-            </details>
+            </div>
+            )}
           </>
         )}
       </Card>
@@ -345,7 +367,7 @@ export default function EntryForm() {
         {tm.done && (
           <>
             <div className="tm-fields">
-              <NumField label="Minutos" value={tm.min} onChange={(v) => setTm({ min: v })} />
+              <NumField label="Tiempo" suffix="min" value={tm.min} onChange={(v) => setTm({ min: v })} />
               <NumField label="Velocidad" suffix="km/h" value={tm.speed} onChange={(v) => setTm({ speed: v })} />
               <NumField label="Inclinación" suffix="%" value={tm.incline} onChange={(v) => setTm({ incline: v })} />
             </div>

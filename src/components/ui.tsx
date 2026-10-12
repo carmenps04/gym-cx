@@ -6,20 +6,37 @@ import { parseNum } from '../lib/util';
 
 const toText = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',');
 
+/**
+ * Cabecera al estilo iOS: con «volver», una fila de navegación arriba y el título grande debajo
+ * (así el título no se estrecha al lado de la flecha). Sin «volver», título y acción en la misma fila.
+ */
 export function PageHeader({ title, sub, back, right }: { title: string; sub?: string; back?: string; right?: ReactNode }) {
   const nav = useNavigate();
+  const titleBlock = (
+    <div className="page-title">
+      <h1>{title}</h1>
+      {sub && <p>{sub}</p>}
+    </div>
+  );
+  if (!back) {
+    return (
+      <header className="page-header">
+        <div className="page-header-row">
+          {titleBlock}
+          {right && <div className="page-header-action">{right}</div>}
+        </div>
+      </header>
+    );
+  }
   return (
     <header className="page-header">
-      {back && (
-        <button className="icon-btn" aria-label="Volver" onClick={() => nav(back)}>
-          <ChevronLeft size={24} />
+      <div className="page-nav">
+        <button className="back-btn" aria-label="Volver" onClick={() => nav(back)}>
+          <ChevronLeft size={26} strokeWidth={2.4} />
         </button>
-      )}
-      <div className="page-title">
-        <h1>{title}</h1>
-        {sub && <p className="muted">{sub}</p>}
+        {right && <div className="page-header-action">{right}</div>}
       </div>
-      {right}
+      {titleBlock}
     </header>
   );
 }

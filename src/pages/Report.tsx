@@ -200,8 +200,8 @@ export default function Report() {
           <b>{w.n}</b>
         </button>
       ))}
-      <button role="tab" aria-selected={sel === 'todo'} aria-label="Todo" className={`week-tab${sel === 'todo' ? ' on' : ''}`} onClick={() => setSel('todo')}>
-        <small>Programa</small>
+      <button role="tab" aria-selected={sel === 'todo'} aria-label="Todo" className={`week-tab all${sel === 'todo' ? ' on' : ''}`} onClick={() => setSel('todo')}>
+        <small>Total</small>
         <b>Todo</b>
       </button>
     </div>
@@ -283,7 +283,7 @@ export default function Report() {
     .sort((a, b) => b.pct - a.pct);
   const loadAnswer =
     prog.length === 0 ? (
-      `No hay cargas registradas en ${scope}. Se importan desde Nivel Bestia en el cuestionario.`
+      `No hay cargas registradas en ${scope}. Se rellenan en el cuestionario, leyendo capturas o a mano.`
     ) : deltas.length === 0 ? (
       'Todos los ejercicios de este periodo son nuevos: hace falta otra sesión de cada uno para comparar.'
     ) : (
@@ -326,7 +326,7 @@ export default function Report() {
   // ---------------------------------------------------------------- 3. Bienestar
   const wellAnswer = noEntries
     ? `Sin cuestionarios en ${scope}.`
-    : `Energía ${f1(well.avgEnergy)}/5, recuperación ${f1(well.avgRecovery)}/5 y sueño ${f1(well.avgSleepHours)} h con calidad ${f1(well.avgSleepQuality)}/5.` +
+    : `Energía ${f1(well.avgEnergy)}/5, recuperación ${f1(well.avgRecovery)}/5 y sueño ${f1(well.avgSleepHours)} h con calidad ${f1(well.avgSleepQuality)}/5.` +
       (week ? versus('Energía', well.avgEnergy, prevWell.avgEnergy, prevLabel) + versus('Recuperación', well.avgRecovery, prevWell.avgRecovery, prevLabel) : '') +
       (well.lowSessions.length ? ` ${well.lowSessions.length} de ${well.points.length} sesiones con algún valor bajo (1 o 2).` : '');
 
@@ -340,7 +340,7 @@ export default function Report() {
     pocos: single ? `Una sola sesión de cinta, valorada como «${single.label.toLowerCase()}».` : 'Aún no hay suficientes valoraciones para concluir.',
   };
   const tmAnswer = tm.sessions.length
-    ? `${verdictText[tm.verdict]} Media: ${f1(tm.avgMin)} min a ${f1(tm.avgSpeed)} km/h y ${f1(tm.avgIncline)} % de inclinación.`
+    ? `${verdictText[tm.verdict]} Media: ${f1(tm.avgMin)} min a ${f1(tm.avgSpeed)} km/h y ${f1(tm.avgIncline)} % de inclinación.`
     : `No hay sesiones con cinta en ${scope}.`;
 
   // ---------------------------------------------------------------- 5. Sensaciones
@@ -382,10 +382,12 @@ export default function Report() {
               ))}
             </ul>
         )}
+        {prog.length > 0 && (
         <p className="method">
           {week ? 'Cada ejercicio se compara con la última vez que lo hiciste antes de esta semana. ' : 'Cada ejercicio se compara con la última vez antes de empezar el programa (o con la primera dentro de él). '}
           Cuenta la mejor serie: primero el peso y, con el mismo peso, las repeticiones. «Estancado» (naranja) = {STALL_SESSIONS} sesiones o más seguidas sin superar la mejor marca, aunque respecto a la vez anterior haya cambiado algo.
         </p>
+        )}
       </Q>
 
       <Q n={2} title="¿Cómo evolucionó el dolor de rodilla?" answer={kneeAnswer}>
@@ -417,7 +419,7 @@ export default function Report() {
           <div className="stats">
             <Stat label="Durante" value={f1(knee.avgDuring)} />
             <Stat label="A las 24 h" value={f1(knee.avg24h)} />
-            <Stat label="Días sin pierna" value={f1(knee.avgOther)} hint="para comparar" />
+            <Stat label="Otros días" value={f1(knee.avgOther)} hint="sin pierna" />
           </div>
         )}
         {knee.points.some((p) => p.during != null && p.h24 != null) && (
@@ -469,8 +471,9 @@ export default function Report() {
         )}
         {(well.recoveryShortRest != null || well.recoveryLongRest != null) && (
           <div className="meters">
-            <MeterRow label="Recuperación tras 0–1 días de descanso" value={well.recoveryShortRest} max={5} color="var(--p2)" />
-            <MeterRow label="Recuperación tras 2 o más días" value={well.recoveryLongRest} max={5} color="var(--p1)" />
+            <h3 className="chart-title">Recuperación según los días de descanso previos</h3>
+            <MeterRow label="0–1 días" value={well.recoveryShortRest} max={5} color="var(--p2)" />
+            <MeterRow label="2 o más días" value={well.recoveryLongRest} max={5} color="var(--p1)" />
           </div>
         )}
         {well.lowSessions.length > 0 && (
@@ -483,10 +486,9 @@ export default function Report() {
                   <Link to={`/sesion/${p.id}`}>
                     {fmtDate(p.at)} · {p.dayName}
                   </Link>
-                  <span className="list-meta">
-                    {' '}
-                    energía {p.energy ?? '—'}, sueño {p.sleepQuality ?? '—'}, recuperación {p.recovery ?? '—'}
-                  </span>
+                  <div className="list-meta">
+                    Energía {p.energy ?? '—'} · sueño {p.sleepQuality ?? '—'} · recuperación {p.recovery ?? '—'}
+                  </div>
                 </li>
               ))}
           </ul>
