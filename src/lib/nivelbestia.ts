@@ -2,7 +2,7 @@
 // Formato observado en la copia del 12/10/2026 (version 1). No es un formato documentado:
 // si la app cambia, aquí es donde hay que adaptarlo.
 import type { DayDef, LoadDay } from '../types.ts';
-import { compareLoad } from './report.ts';
+import { normName } from './report.ts';
 
 interface NbSet {
   peso?: number;
@@ -30,8 +30,8 @@ interface NbBackup {
 }
 
 /**
- * Nombres en español para los códigos que usa Nivel Bestia. Los ha escrito Claude a partir del código:
- * pueden no coincidir palabra por palabra con lo que muestra la app.
+ * Nombres en español para los códigos que usa Nivel Bestia. Siete están comprobados con capturas de la app
+ * (pantalla «Corrige tu ejercicio»): los de NB_OLD_NAMES y la elevación lateral; el resto se dedujeron del código.
  */
 export const NB_NAMES: Record<string, string> = {
   'abduccion-cadera': 'Abducción de cadera',
@@ -40,12 +40,12 @@ export const NB_NAMES: Record<string, string> = {
   'curl-femoral-sentado': 'Curl femoral sentado',
   'curl-predicador': 'Curl predicador',
   'decline-machine-chest-press': 'Press de pecho declinado en máquina',
-  'dumbbell-decline-skullcrusher': 'Press francés declinado con mancuernas',
+  'dumbbell-decline-skullcrusher': 'Press francés declinado',
   'dumbbell-standing-single-arm-hammer-curl': 'Curl martillo a una mano',
   'dumbbell-wrist-extension': 'Extensión de muñeca con mancuerna',
   'elevacion-lateral-polea': 'Elevación lateral en polea',
   'extension-cuadriceps': 'Extensión de cuádriceps',
-  'extension-polea': 'Extensión de tríceps en polea',
+  'extension-polea': 'Extensión en polea con cuerda',
   'gemelo-prensa': 'Gemelo en prensa',
   'gemelo-sentado': 'Gemelo sentado',
   'jalon-neutro': 'Jalón agarre neutro',
@@ -55,7 +55,7 @@ export const NB_NAMES: Record<string, string> = {
   'machine-hip-thrust': 'Hip thrust en máquina',
   'machine-horizontal-leg-press': 'Prensa horizontal',
   'machine-neutral-row': 'Remo agarre neutro en máquina',
-  'machine-pec-fly': 'Aperturas en máquina',
+  'machine-pec-fly': 'Contractor de pecho',
   'machine-preacher-curl': 'Curl predicador en máquina',
   'machine-pulldown': 'Jalón en máquina',
   'machine-tricep-extension': 'Extensión de tríceps en máquina',
@@ -64,16 +64,26 @@ export const NB_NAMES: Record<string, string> = {
   'peso-muerto-rumano': 'Peso muerto rumano',
   plancha: 'Plancha',
   'prensa-piernas': 'Prensa de piernas',
-  'press-banca': 'Press banca',
-  'press-inclinado': 'Press inclinado',
+  'press-banca': 'Press de banca con barra',
+  'press-inclinado': 'Press inclinado con mancuernas',
   'press-maquina-pecho': 'Press de pecho en máquina',
   'remo-barra': 'Remo con barra',
   'remo-mancuerna': 'Remo con mancuerna',
   'remo-polea-baja': 'Remo en polea baja',
   'smith-machine-bench-press': 'Press banca en multipower',
   'smith-machine-front-squat': 'Sentadilla frontal en multipower',
-  'smith-machine-seated-overhead-press': 'Press militar sentado en multipower',
+  'smith-machine-seated-overhead-press': 'Press de hombros sentado en Smith',
   'wide-grip-lat-pulldown': 'Jalón agarre ancho',
+};
+
+/** Nombres que usó esta app antes de comprobarlos con capturas reales (los datos guardados pueden llevarlos). */
+export const NB_OLD_NAMES: Record<string, string> = {
+  'dumbbell-decline-skullcrusher': 'Press francés declinado con mancuernas',
+  'extension-polea': 'Extensión de tríceps en polea',
+  'machine-pec-fly': 'Aperturas en máquina',
+  'press-banca': 'Press banca',
+  'press-inclinado': 'Press inclinado',
+  'smith-machine-seated-overhead-press': 'Press militar sentado en multipower',
 };
 
 /** Nombre legible: el del diccionario o, si es un ejercicio nuevo, el código con espacios. */
@@ -119,8 +129,13 @@ export function parseNb(raw: unknown, now = Date.now()): NbImport {
         .map((s) => ({ kg: typeof s?.peso === 'number' && s.peso > 0 ? s.peso : null, reps: typeof s?.reps === 'number' && s.reps > 0 ? s.reps : null }))
         .filter((s) => s.kg != null || s.reps != null);
       if (!valid.length) continue;
-      const best = valid.reduce((a, b) => (compareLoad(b, a) > 0 ? b : a));
-      exercises.push({ id, name: nbName(id), kg: best.kg, reps: best.reps, sets: valid.length });
+      // Media de las series (misma regla que la lectura de capturas).
+      const withKg = valid.filter((x) => x.kg != null);
+      const withReps = valid.filter((x) => x.reps != null);
+      const r1 = (n: number) => Math.round(n * 10) / 10;
+      const kg = withKg.length ? r1(withKg.reduce((t, x) => t + (x.kg as number), 0) / withKg.length) : null;
+      const reps = withReps.length ? r1(withReps.reduce((t, x) => t + (x.reps as number), 0) / withReps.length) : null;
+      exercises.push({ id, name: nbName(id), kg, reps, sets: valid.length });
     }
     if (exercises.length) loads.push({ date, at: dateToMs(date), exercises, importedAt: now });
   }
@@ -151,4 +166,20 @@ export function guessDay(days: DayDef[], names: string[]): DayDef | null {
     }
   }
   return best;
+}
+
+/**
+ * Traduce el nombre que muestra Nivel Bestia al que ya usa esta app para ese ejercicio, para que el
+ * historial no se parta en dos (p. ej. «Contractor de pecho» → «Aperturas en máquina» si así se guardó antes).
+ */
+export function resolveNbName(screenName: string, known: string[]): string {
+  const key = normName(screenName);
+  const has = (n: string) => known.find((k) => normName(k) === normName(n));
+  const code = Object.keys(NB_NAMES).find((c) => normName(NB_NAMES[c]) === key);
+  // Primero el nombre antiguo, si los días o el historial lo usan; si no, el de Nivel Bestia.
+  if (code && NB_OLD_NAMES[code] && has(NB_OLD_NAMES[code])) return has(NB_OLD_NAMES[code])!;
+  const direct = has(screenName);
+  if (direct) return direct;
+  if (code) return NB_NAMES[code];
+  return screenName.charAt(0).toUpperCase() + screenName.slice(1);
 }

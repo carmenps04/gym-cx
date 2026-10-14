@@ -10,9 +10,9 @@ export function fmtNum(n: number | null | undefined, digits = 1): string {
 }
 
 export function fmtLoad(kg: number | null, reps: number | null): string {
-  const r = reps != null ? `${reps} rep.` : '';
-  if (kg == null) return r ? `Peso corporal × ${reps}` : '—';
-  return r ? `${fmtNum(kg)} kg × ${reps}` : `${fmtNum(kg)} kg`;
+  const rr = reps == null ? null : fmtNum(reps);
+  if (kg == null) return rr ? `Peso corporal × ${rr}` : '—';
+  return rr ? `${fmtNum(kg)} kg × ${rr}` : `${fmtNum(kg)} kg`;
 }
 
 const DAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];

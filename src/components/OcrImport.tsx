@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { ClipboardPaste, ImagePlus, X } from 'lucide-react';
 import type { ExerciseLog } from '../types';
 import { useUi } from '../state/ui';
-import { parseOcrText } from '../lib/ocrParse';
+import { parseScreenshots } from '../lib/ocrParse';
+import { resolveNbName } from '../lib/nivelbestia';
 import type { OcrExercise } from '../lib/ocrParse';
 import type { OcrProgress } from '../lib/ocr';
 import { NumField } from './ui';
@@ -15,10 +16,21 @@ interface Row {
   kg: number | null;
   reps: number | null;
   sets: number;
+  /** Series leídas, para comprobarlas de un vistazo: «4×11 · 4×12 · 4×10». */
+  detail: string;
 }
 
 const toRows = (xs: OcrExercise[]): Row[] =>
-  xs.map((e) => ({ include: e.best != null, name: e.name, matched: e.matched, raw: e.raw, kg: e.best?.kg ?? null, reps: e.best?.reps ?? null, sets: e.sets.length }));
+  xs.map((e) => ({
+    include: e.avg != null,
+    name: e.name,
+    matched: e.matched,
+    raw: e.raw,
+    kg: e.avg?.kg ?? null,
+    reps: e.avg?.reps ?? null,
+    sets: e.sets.length,
+    detail: e.sets.map((x) => `${x.kg == null ? '—' : String(x.kg).replace('.', ',')}×${x.reps}`).join(' · '),
+  }));
 
 /**
  * Lee capturas de pantalla de Nivel Bestia (o texto pegado) y propone las cargas de cada ejercicio.
@@ -33,9 +45,11 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
   const [rawText, setRawText] = useState('');
   const [paste, setPaste] = useState('');
 
-  const review = (text: string) => {
-    setRawText(text);
-    setRows(toRows(parseOcrText(text, known)));
+  const review = (texts: string[]) => {
+    setRawText(texts.join('\n\n'));
+    // Solo ejercicios con series leídas: los nombres sueltos (menús, listas de la rutina…) se descartan.
+    const found = parseScreenshots(texts, known, (n) => resolveNbName(n, known)).filter((e) => e.sets.length > 0);
+    setRows(toRows(found));
     setStage('review');
   };
 
@@ -45,7 +59,7 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
     try {
       const { readScreenshots } = await import('../lib/ocr');
       const texts = await readScreenshots(files, setProgress);
-      review(texts.join('\n\n'));
+      review(texts);
     } catch {
       setStage('idle');
       ui.toast('No se pudieron leer las capturas. Revisa la conexión la primera vez (descarga el lector) e inténtalo otra vez.');
@@ -115,7 +129,7 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
               <>
                 <p className="hint">En Fotos, abre la captura, mantén pulsado sobre el texto → Seleccionar todo → Copiar, y pégalo aquí.</p>
                 <textarea rows={8} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="Texto copiado de la captura" />
-                <button className="btn primary block" disabled={!paste.trim()} onClick={() => review(paste)}>
+                <button className="btn primary block" disabled={!paste.trim()} onClick={() => review([paste])}>
                   Leer cargas
                 </button>
               </>
@@ -128,7 +142,7 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
                     No he encontrado ejercicios conocidos con sus series. Comprueba que en la captura se ven el nombre del ejercicio y los kg y repeticiones, o que los ejercicios están en tus días de rutina.
                   </p>
                 ) : (
-                  <p className="card-sub">Mejor serie de cada ejercicio. Corrige lo que esté mal y desmarca lo que no quieras usar.</p>
+                  <p className="card-sub">Carga media de cada ejercicio (media de sus series). Corrige lo que esté mal y desmarca lo que no quieras usar.</p>
                 )}
                 <ul className="ocr-rows">
                   {rows.map((r, i) => (
@@ -139,9 +153,15 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
                       </label>
                       <div className="ocr-fields">
                         <NumField small label="kg" value={r.kg} onChange={(v) => setRow(i, { kg: v })} />
-                        <NumField small label="reps" value={r.reps} onChange={(v) => setRow(i, { reps: v == null ? null : Math.round(v) })} />
-                        <span className="ocr-meta">{r.sets ? `${r.sets} ${r.sets === 1 ? 'serie' : 'series'} leídas` : 'sin series leídas'}</span>
+                        <NumField small label="reps" value={r.reps} onChange={(v) => setRow(i, { reps: v })} />
+                        <span className="ocr-meta">
+                          media de {r.sets} {r.sets === 1 ? 'serie' : 'series'}
+                        </span>
                       </div>
+                      <p className="ocr-detail">
+                        {r.detail}
+                        {r.raw && r.raw.split(' (')[0] !== r.name ? ` · en Nivel Bestia: ${r.raw}` : r.raw.includes('(kg') ? ` · ${r.raw.slice(r.raw.indexOf('(') + 1, -1)}` : ''}
+                      </p>
                     </li>
                   ))}
                 </ul>

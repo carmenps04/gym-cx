@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { CalendarPlus, Check, FileDown, Share, Trash2 } from 'lucide-react';
-import { buildReportPdf, canShareFile } from '../lib/pdf';
+import { CalendarPlus, Check, FileDown, Trash2 } from 'lucide-react';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import {
@@ -165,14 +164,7 @@ function WeekData({ label, entries, loads }: { label: string; entries: Entry[]; 
 
 export default function Report() {
   const { data } = useData();
-  const ui = useUi();
   const location = useLocation();
-  const pageRef = useRef<HTMLDivElement>(null);
-  const [pdfBusy, setPdfBusy] = useState(false);
-  const [pdf, setPdf] = useState<{ file: File; url: string } | null>(null);
-  useEffect(() => () => {
-    if (pdf) URL.revokeObjectURL(pdf.url);
-  }, [pdf]);
   const savedId = (location.state as { saved?: string } | null)?.saved;
   const [now] = useState(Date.now);
 
@@ -217,52 +209,20 @@ export default function Report() {
 
   const periodText = week ? `Semana ${week.n} · ${rangeText(week.from, week.to)}` : `Todo el programa, desde el ${fmtDate(start)}`;
 
-  // PDF: se genera en la propia app (window.print() no funciona en el iPhone con la app abierta como app).
-  // Al terminar se muestra una ventana con «Guardar o compartir», que abre la hoja Compartir de iOS:
-  // tiene que ser un toque nuevo, porque iOS no deja abrirla al final de una tarea larga.
-  const exportPdf = async () => {
-    if (!pageRef.current || pdfBusy) return;
-    setPdfBusy(true);
-    try {
-      const d = new Date();
-      const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const name = `Informe gym - ${week ? `semana ${week.n}` : 'programa completo'} - ${stamp}.pdf`;
-      const blob = await buildReportPdf(pageRef.current);
-      setPdf({ file: new File([blob], name, { type: 'application/pdf' }), url: URL.createObjectURL(blob) });
-    } catch {
-      ui.toast('No se pudo generar el PDF. Inténtalo otra vez.');
-    } finally {
-      setPdfBusy(false);
-    }
+  // PDF: se usa la impresión del navegador (texto real, saltos de página controlados por CSS).
+  // El título del documento es el nombre que propone el navegador para el archivo.
+  const exportPdf = () => {
+    const prev = document.title;
+    const d = new Date();
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    document.title = `Informe gym - ${week ? `semana ${week.n}` : 'programa completo'} - ${stamp}`;
+    const restore = () => {
+      document.title = prev;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    window.print();
   };
-
-  const sharePdf = (file: File) => {
-    navigator.share({ files: [file], title: file.name.replace(/\.pdf$/, '') }).catch((e: unknown) => {
-      if ((e as { name?: string })?.name !== 'AbortError') ui.toast('No se pudo abrir Compartir. Usa «Abrir PDF».');
-    });
-  };
-
-  const pdfDialog = pdf && (
-    <div className="overlay" onClick={() => setPdf(null)}>
-      <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="pdf-title" onClick={(e) => e.stopPropagation()}>
-        <h2 id="pdf-title">PDF listo</h2>
-        <p>{pdf.file.name}</p>
-        <div className="dialog-actions pdf-actions">
-          {canShareFile(pdf.file) && (
-            <button className="btn primary" onClick={() => sharePdf(pdf.file)} autoFocus>
-              <Share size={17} /> Guardar o compartir
-            </button>
-          )}
-          <a className="btn" href={pdf.url} download={pdf.file.name} target="_blank" rel="noreferrer">
-            Abrir PDF
-          </a>
-          <button className="btn ghost" onClick={() => setPdf(null)}>
-            Cerrar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 
   const header = (
     <>
@@ -270,8 +230,8 @@ export default function Report() {
         title="Informe"
         sub={`${periodText}${week?.current ? ' (esta semana)' : ''}`}
         right={
-          <button type="button" className="btn sm pdf-btn" onClick={exportPdf} disabled={pdfBusy} aria-label="Exportar el informe en PDF">
-            <FileDown size={17} /> {pdfBusy ? 'Creando…' : 'PDF'}
+          <button type="button" className="btn sm pdf-btn" onClick={exportPdf} aria-label="Exportar el informe en PDF">
+            <FileDown size={17} /> PDF
           </button>
         }
       />
@@ -303,8 +263,7 @@ export default function Report() {
 
   if (data.entries.length === 0 && sessions.length === 0) {
     return (
-      <div className="page" ref={pageRef}>
-        {pdfDialog}
+      <div className="page">
         {header}
         <Empty title="Aún no hay sesiones" text="El informe se rellena a medida que contestas el cuestionario después de entrenar." action={<Link className="btn primary" to="/nueva">Registrar sesión</Link>} />
       </div>
@@ -397,8 +356,7 @@ export default function Report() {
     );
 
   return (
-    <div className="page report" ref={pageRef}>
-      {pdfDialog}
+    <div className="page report">
       {header}
 
       <Q n={1} long title="¿En qué ejercicios progresó la carga y en cuáles se estancó?" answer={loadAnswer}>
@@ -427,7 +385,7 @@ export default function Report() {
         {prog.length > 0 && (
         <p className="method">
           {week ? 'Cada ejercicio se compara con la última vez que lo hiciste antes de esta semana. ' : 'Cada ejercicio se compara con la última vez antes de empezar el programa (o con la primera dentro de él). '}
-          Cuenta la mejor serie: primero el peso y, con el mismo peso, las repeticiones. «Estancado» (naranja) = {STALL_SESSIONS} sesiones o más seguidas sin superar la mejor marca, aunque respecto a la vez anterior haya cambiado algo.
+          Se usa la carga media de cada sesión (media de las series): primero el peso y, con el mismo peso, las repeticiones. «Estancado» (naranja) = {STALL_SESSIONS} sesiones o más seguidas sin superar la mejor marca, aunque respecto a la vez anterior haya cambiado algo.
         </p>
         )}
       </Q>

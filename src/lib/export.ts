@@ -1,6 +1,5 @@
 import type { AppData, Entry } from '../types';
 import { sortByDate } from './report';
-import { segmentsText } from './treadmill';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -24,7 +23,7 @@ function dateParts(ms: number): [string, string] {
 
 export function sessionsCsv(entries: Entry[]): string {
   return csv(
-    ['fecha', 'hora', 'dia', 'pierna', 'rodilla_durante', 'rodilla_24h', 'cinta', 'cinta_min', 'cinta_kmh', 'cinta_inclinacion', 'cinta_exigencia', 'cinta_tramos', 'energia', 'sueno_horas', 'sueno_calidad', 'recuperacion', 'sensacion_dia', 'comentario'],
+    ['fecha', 'hora', 'dia', 'pierna', 'rodilla_durante', 'rodilla_24h', 'cinta', 'cinta_min', 'cinta_kmh', 'cinta_inclinacion', 'cinta_exigencia', 'energia', 'sueno_horas', 'sueno_calidad', 'recuperacion', 'sensacion_dia', 'comentario'],
     sortByDate(entries).map((e) => [
       ...dateParts(e.at),
       e.dayName,
@@ -36,7 +35,6 @@ export function sessionsCsv(entries: Entry[]): string {
       e.treadmill.speed,
       e.treadmill.incline,
       e.treadmill.rating,
-      e.treadmill.done ? segmentsText(e.treadmill) : '',
       e.energy,
       e.sleepHours,
       e.sleepQuality,

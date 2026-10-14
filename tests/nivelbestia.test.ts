@@ -42,7 +42,7 @@ const backup = {
   },
 };
 
-test('lee días, mejor serie y número de series', () => {
+test('lee días, carga media y número de series', () => {
   const r = parseNb(backup, 1);
   assert.equal(r.loads.length, 2);
   const d1 = r.loads[0];
@@ -51,12 +51,12 @@ test('lee días, mejor serie y número de series', () => {
     d1.exercises.map((x) => [x.name, x.kg, x.reps, x.sets]),
     [
       ['Prensa de piernas', 60, 12, 2],
-      ['Extensión de cuádriceps', 25, 12, 2],
+      ['Extensión de cuádriceps', 25, 11.5, 2],
       ['Plancha', null, 45, 1],
     ],
   );
-  // 30 kg × 12 es mejor que 30 × 11 y que 25 × 15
-  assert.deepEqual([r.loads[1].exercises[1].kg, r.loads[1].exercises[1].reps], [30, 12]);
+  // Media de 30×11, 30×12 y 25×15 → 28,3 kg y 12,7 reps
+  assert.deepEqual([r.loads[1].exercises[1].kg, r.loads[1].exercises[1].reps], [28.3, 12.7]);
 });
 
 test('lee la rutina y marca como pierna solo los días con mayoría de ejercicios de pierna', () => {
