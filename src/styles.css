@@ -95,6 +95,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+  overflow-x: clip; /* nada puede ensanchar la página y obligar a desplazarla en horizontal */
+  touch-action: pan-x pan-y; /* sin zoom con dos dedos ni doble toque */
 }
 h1, h2, h3, p, ul, ol, figure { margin: 0; }
 ul, ol { padding: 0; list-style: none; }
@@ -356,7 +358,7 @@ input:focus, textarea:focus { outline: none; border-color: var(--accent-text); b
 .legend i.dashed { height: 0; width: 16px; border-radius: 0; background: none; border-top: 3px dashed; }
 
 .delta { display: flex; flex-direction: column; gap: 9px; }
-.delta-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) 62px; align-items: center; gap: 10px; font-size: var(--fs-foot); }
+.delta-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) max-content; align-items: center; gap: 10px; font-size: var(--fs-foot); }
 .delta-label { line-height: 1.25; min-width: 0; }
 .delta-track { position: relative; height: 12px; }
 .delta-zero { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line); }

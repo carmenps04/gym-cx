@@ -88,7 +88,7 @@ function deltaItem(p: WindowProgress): DeltaItem | null {
     text = `${current.kg > base.kg ? '+' : '−'}${fmtNum(Math.abs(current.kg - base.kg))} kg`;
   } else if (base.reps != null && current.reps != null && base.reps > 0 && current.reps !== base.reps) {
     pct = ((current.reps - base.reps) / base.reps) * 100;
-    text = `${current.reps > base.reps ? '+' : '−'}${Math.abs(current.reps - base.reps)} rep.`;
+    text = `${current.reps > base.reps ? '+' : '−'}${fmtNum(Math.round(Math.abs(current.reps - base.reps) * 10) / 10)} rep.`;
   }
   // El color sigue al estado (p. ej. un ejercicio puede subir respecto a la semana pasada y seguir sin superar su mejor marca).
   const tone = p.status === 'progresa' ? 'up' : p.status === 'baja' ? 'down' : p.status === 'estancado' ? 'stall' : 'flat';

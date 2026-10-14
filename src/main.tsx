@@ -7,6 +7,11 @@ import { DataProvider } from './state/data';
 import { UiProvider } from './state/ui';
 import './styles.css';
 
+// Safari en iPhone ignora user-scalable=no en pestañas normales; esto bloquea el gesto de pellizcar.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HashRouter>
