@@ -15,6 +15,27 @@ const GAP = 4;
 /** Ancho en px con el que se maqueta la copia (parecido a un A4 a 96 ppp menos márgenes). */
 const RENDER_W = 720;
 const PIXEL_RATIO = 2;
+/** Resolución de las imágenes de vista previa (px por mm): 4 → 840 × 1188 px por página. */
+const PREVIEW_PX_PER_MM = 4;
+
+export interface ReportPdf {
+  blob: Blob;
+  /** Cada página del PDF como imagen, para verla dentro de la app. */
+  pages: string[];
+}
+
+/** Lienzo blanco del tamaño de una página A4 para la vista previa. */
+function previewPage(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = PAGE_W * PREVIEW_PX_PER_MM;
+  c.height = PAGE_H * PREVIEW_PX_PER_MM;
+  const ctx = c.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+  }
+  return c;
+}
 
 /** Elementos entre los que se puede partir una tarjeta larga. */
 const BREAK_SEL = '.q-head, .q-answer, .chart, .chart-title, .stats, .legend, .meters, .meter-row, .delta-row, .load-row, li, p, h2, h3, table tr';
@@ -42,7 +63,7 @@ function slice(src: HTMLCanvasElement, fromPx: number, toPx: number): HTMLCanvas
   return c;
 }
 
-export async function buildReportPdf(page: HTMLElement): Promise<Blob> {
+export async function buildReportPdf(page: HTMLElement): Promise<ReportPdf> {
   const [{ toCanvas }, { jsPDF }] = await Promise.all([import('html-to-image'), import('jspdf')]);
 
   const host = document.createElement('div');
@@ -63,14 +84,19 @@ export async function buildReportPdf(page: HTMLElement): Promise<Blob> {
     const pageH = bottom - M_TOP;
     let y = M_TOP;
     let first = true;
+    // La vista previa repite en lienzos lo mismo que se coloca en el PDF.
+    const previews: HTMLCanvasElement[] = [previewPage()];
 
     const place = (canvas: HTMLCanvasElement, hMm: number) => {
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', M_X, y, contentW, hMm, undefined, 'FAST');
+      const k = PREVIEW_PX_PER_MM;
+      previews[previews.length - 1].getContext('2d')?.drawImage(canvas, M_X * k, y * k, contentW * k, hMm * k);
       y += hMm + GAP;
       first = false;
     };
     const newPage = () => {
       pdf.addPage();
+      previews.push(previewPage());
       y = M_TOP;
     };
 
@@ -126,9 +152,17 @@ export async function buildReportPdf(page: HTMLElement): Promise<Blob> {
       for (let i = 1; i <= n; i++) {
         pdf.setPage(i);
         pdf.text(`${i} / ${n}`, PAGE_W / 2, PAGE_H - 8, { align: 'center' });
+        const ctx = previews[i - 1]?.getContext('2d');
+        if (ctx) {
+          const k = PREVIEW_PX_PER_MM;
+          ctx.fillStyle = 'rgb(120, 120, 120)';
+          ctx.font = `${Math.round(8 * 0.3528 * k)}px -apple-system, system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText(`${i} / ${n}`, (PAGE_W / 2) * k, (PAGE_H - 8) * k);
+        }
       }
     }
-    return pdf.output('blob');
+    return { blob: pdf.output('blob'), pages: previews.map((c) => c.toDataURL('image/jpeg', 0.85)) };
   } finally {
     host.remove();
   }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { CalendarPlus, Check, FileDown, Share, Trash2 } from 'lucide-react';
+import { CalendarPlus, Check, Eye, FileDown, Share, Trash2, X } from 'lucide-react';
 import { buildReportPdf, canShareFile } from '../lib/pdf';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
@@ -169,7 +169,9 @@ export default function Report() {
   const location = useLocation();
   const pageRef = useRef<HTMLDivElement>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [pdf, setPdf] = useState<{ file: File; url: string } | null>(null);
+  const [pdf, setPdf] = useState<{ file: File; url: string; pages: string[] } | null>(null);
+  const [pdfView, setPdfView] = useState(false);
+  const [pdfZoom, setPdfZoom] = useState(false);
   useEffect(
     () => () => {
       if (pdf) URL.revokeObjectURL(pdf.url);
@@ -221,7 +223,7 @@ export default function Report() {
   const periodText = week ? `Semana ${week.n} · ${rangeText(week.from, week.to)}` : `Todo el programa, desde el ${fmtDate(start)}`;
 
   // PDF: se genera en la propia app (window.print() no funciona en el iPhone con la app abierta como app).
-  // Al terminar se muestra una ventana con «Guardar o compartir», que abre la hoja Compartir de iOS:
+  // Al terminar se muestra una ventana con «Guardar» (hoja Compartir de iOS) y «Ver» (vista previa):
   // tiene que ser un toque nuevo, porque iOS no deja abrirla al final de una tarea larga.
   const exportPdf = async () => {
     if (!pageRef.current || pdfBusy) return;
@@ -230,8 +232,10 @@ export default function Report() {
       const d = new Date();
       const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const name = `Informe gym - ${week ? `semana ${week.n}` : 'programa completo'} - ${stamp}.pdf`;
-      const blob = await buildReportPdf(pageRef.current);
-      setPdf({ file: new File([blob], name, { type: 'application/pdf' }), url: URL.createObjectURL(blob) });
+      const { blob, pages } = await buildReportPdf(pageRef.current);
+      setPdfView(false);
+      setPdfZoom(false);
+      setPdf({ file: new File([blob], name, { type: 'application/pdf' }), url: URL.createObjectURL(blob), pages });
     } catch {
       ui.toast('No se pudo generar el PDF. Inténtalo otra vez.');
     } finally {
@@ -239,33 +243,69 @@ export default function Report() {
     }
   };
 
+  const closePdf = () => {
+    setPdf(null);
+    setPdfView(false);
+    setPdfZoom(false);
+  };
+
+  // «Guardar» abre la hoja Compartir de iOS: Guardar en Archivos, WhatsApp, Mail, Drive…
+  // Donde no existe (algunos navegadores de ordenador) se descarga el archivo.
+  const saveButton = (cls: string, autoFocus = false) =>
+    pdf &&
+    (canShareFile(pdf.file) ? (
+      <button className={cls} onClick={() => sharePdf(pdf.file)} autoFocus={autoFocus}>
+        <Share size={17} /> Guardar
+      </button>
+    ) : (
+      <a className={cls} href={pdf.url} download={pdf.file.name}>
+        <Share size={17} /> Guardar
+      </a>
+    ));
+
   const sharePdf = (file: File) => {
     navigator.share({ files: [file], title: file.name.replace(/\.pdf$/, '') }).catch((e: unknown) => {
-      if ((e as { name?: string })?.name !== 'AbortError') ui.toast('No se pudo abrir Compartir. Usa «Abrir PDF».');
+      if ((e as { name?: string })?.name !== 'AbortError') ui.toast('No se pudo abrir Guardar. Inténtalo otra vez.');
     });
   };
 
-  const pdfDialog = pdf && (
-    <div className="overlay" onClick={() => setPdf(null)}>
-      <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="pdf-title" onClick={(e) => e.stopPropagation()}>
-        <h2 id="pdf-title">PDF listo</h2>
-        <p>{pdf.file.name}</p>
-        <div className="dialog-actions pdf-actions">
-          {canShareFile(pdf.file) && (
-            <button className="btn primary" onClick={() => sharePdf(pdf.file)} autoFocus>
-              <Share size={17} /> Guardar o compartir
-            </button>
-          )}
-          <a className="btn" href={pdf.url} download={pdf.file.name} target="_blank" rel="noreferrer">
-            Abrir PDF
-          </a>
-          <button className="btn ghost" onClick={() => setPdf(null)}>
-            Cerrar
+  const pdfDialog =
+    pdf &&
+    (pdfView ? (
+      <div className="pdf-viewer" role="dialog" aria-modal="true" aria-label={`Vista previa: ${pdf.file.name}`}>
+        <div className="pdf-viewer-bar">
+          <button className="icon-btn" aria-label="Cerrar la vista previa" onClick={() => setPdfView(false)}>
+            <X size={20} />
           </button>
+          <span className="pdf-viewer-title">
+            {pdf.pages.length} {pdf.pages.length === 1 ? 'página' : 'páginas'}
+          </span>
+          {saveButton('btn sm primary')}
+        </div>
+        <div className={`pdf-viewer-pages${pdfZoom ? ' zoom' : ''}`}>
+          {pdf.pages.map((src, i) => (
+            <img key={i} src={src} alt={`Página ${i + 1} de ${pdf.pages.length}`} onClick={() => setPdfZoom((z) => !z)} />
+          ))}
+          <p className="pdf-viewer-hint">Toca una página para {pdfZoom ? 'verla entera' : 'ampliarla'}.</p>
         </div>
       </div>
-    </div>
-  );
+    ) : (
+      <div className="overlay" onClick={closePdf}>
+        <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="pdf-title" onClick={(e) => e.stopPropagation()}>
+          <h2 id="pdf-title">PDF listo</h2>
+          <p>{pdf.file.name}</p>
+          <div className="dialog-actions pdf-actions">
+            {saveButton('btn primary', true)}
+            <button className="btn" onClick={() => setPdfView(true)}>
+              <Eye size={17} /> Ver
+            </button>
+            <button className="btn ghost" onClick={closePdf}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    ));
 
   const header = (
     <>
