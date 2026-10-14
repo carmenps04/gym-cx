@@ -5,8 +5,7 @@ import { authMessage, useAuth } from '../state/auth';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import { download, isBackup, loadsCsv, sessionsCsv } from '../lib/export';
-import { appBaseUrl, fmtDate } from '../lib/util';
-import { NbImportButton } from '../components/NbImport';
+import { appBaseUrl } from '../lib/util';
 import { localDate, programStart } from '../lib/report';
 import { Card, PageHeader, Segmented } from '../components/ui';
 
@@ -159,18 +158,6 @@ export default function Settings() {
 
       <Account />
       {syncError && mode === 'cloud' && <p className="hint warn">Problema al sincronizar: {syncError}</p>}
-
-      <Card
-        title="Nivel Bestia"
-        sub={
-          data.config.nbImportedAt
-            ? `Última importación: ${fmtDate(data.config.nbImportedAt)}${data.config.nbBackupAt ? ` (copia del ${fmtDate(new Date(data.config.nbBackupAt).getTime())})` : ''}. ${data.loads.length} entrenamientos guardados.`
-            : 'Trae las cargas de todos tus entrenamientos y los días de tu rutina desde la copia de Nivel Bestia (Ajustes → Guardar copia).'
-        }
-      >
-        <NbImportButton label={data.config.nbImportedAt ? 'Importar copia nueva' : 'Importar de Nivel Bestia'} />
-        <p className="hint">Solo se leen las series y la rutina. El resto de la copia (peso corporal, fecha de nacimiento, puntos…) no se guarda.</p>
-      </Card>
 
       <Link to="/ajustes/dias" className="card row-link">
         <div>

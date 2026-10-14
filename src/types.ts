@@ -26,12 +26,25 @@ export interface ExerciseLog {
 
 export type TreadmillRating = 'poco' | 'bien' | 'mucho';
 
+/** Un tramo de cinta (p. ej. 5 min a 5 km/h y 2 %, luego 10 min a 5,5 km/h y 8 %). */
+export interface TreadmillSegment {
+  min: number | null;
+  speed: number | null;
+  incline: number | null;
+}
+
+/**
+ * Cinta de la sesión. min es el total de los tramos; speed e incline, la media ponderada por minutos
+ * (así el informe compara sesiones aunque tengan un número distinto de tramos).
+ */
 export interface Treadmill {
   done: boolean;
   min: number | null;
   speed: number | null;
   incline: number | null;
   rating: TreadmillRating | null;
+  /** Tramos registrados. Las sesiones antiguas no lo tienen (un solo registro). */
+  segments?: TreadmillSegment[];
 }
 
 /** Escalas de 1 a 5 (1 = muy mal, 5 = muy bien). */

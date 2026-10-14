@@ -165,3 +165,4 @@ test('pendientes de 24 h: se abren a las 20 h y caducan a los 3 días', () => {
   assert.equal(pending24h([e], e.at + 4 * DAY).due.length, 0);
   assert.equal(pending24h([{ ...e, knee24h: 3 }], e.at + 21 * HOUR).due.length, 0);
 });
+
