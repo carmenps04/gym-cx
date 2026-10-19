@@ -505,3 +505,61 @@ export function weekStats(entries: Entry[], weeks: WeekRange[]): WeekStat[] {
       };
     });
 }
+
+// ------------------------------------------------------------------ Resumen para el PDF
+
+export interface Gain {
+  name: string;
+  base: LoadRecord;
+  current: LoadRecord;
+  /** Cambio de peso (kg) o, si el peso es el mismo, de repeticiones. */
+  deltaKg: number | null;
+  deltaReps: number | null;
+  /** Porcentaje de mejora, para ordenar de más a menos. */
+  pct: number;
+}
+
+export interface GainSummary {
+  /** Solo los ejercicios que mejoran respecto a la referencia, de más a menos mejora. */
+  gains: Gain[];
+  /** Ejercicios con referencia para comparar. */
+  compared: number;
+  same: number;
+  down: number;
+  /** Ejercicios hechos por primera vez (sin referencia). */
+  fresh: number;
+}
+
+/**
+ * Ejercicios que mejoran en [from, to): la última marca del periodo frente a la última antes del periodo
+ * (o la primera dentro, si es el primer periodo en que aparece). Mismo criterio que el resto del informe:
+ * primero el peso y, con el mismo peso, las repeticiones.
+ */
+export function gainsInWindow(sessions: { at: number; exercises: ExerciseLog[] }[], from: number, to: number): GainSummary {
+  const out: GainSummary = { gains: [], compared: 0, same: 0, down: 0, fresh: 0 };
+  for (const p of progressInWindow(sessions, from, to)) {
+    const comparable = p.hasBase || p.records.filter((r) => r.at >= from).length > 1;
+    if (!comparable) {
+      out.fresh++;
+      continue;
+    }
+    out.compared++;
+    const c = compareLoad(p.current, p.base);
+    if (c < 0) out.down++;
+    else if (c === 0) out.same++;
+    else {
+      const { base, current } = p;
+      const kgUp = base.kg != null && current.kg != null && Math.abs(current.kg - base.kg) > 1e-9;
+      const pct = kgUp
+        ? base.kg! > 0
+          ? ((current.kg! - base.kg!) / base.kg!) * 100
+          : 100
+        : base.reps != null && current.reps != null && base.reps > 0
+          ? ((current.reps - base.reps) / base.reps) * 100
+          : 0;
+      out.gains.push({ name: p.name, base, current, deltaKg: p.deltaKg, deltaReps: p.deltaReps, pct });
+    }
+  }
+  out.gains.sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name, 'es'));
+  return out;
+}

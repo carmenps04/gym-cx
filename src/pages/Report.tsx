@@ -24,6 +24,7 @@ import type { Entry, LoadDay, TreadmillRating } from '../types';
 import { calendarLinkFor } from '../lib/calendar';
 import { fmtDate, fmtLoad, fmtNum, fmtShort } from '../lib/util';
 import { Empty, PageHeader, Stat } from '../components/ui';
+import { PdfSummary } from '../components/PdfSummary';
 import { BarChart, DeltaBars, LineChart, MeterRow, PASTEL, StackedBars } from '../components/charts';
 import type { DeltaItem } from '../components/charts';
 
@@ -168,6 +169,7 @@ export default function Report() {
   const ui = useUi();
   const location = useLocation();
   const pageRef = useRef<HTMLDivElement>(null);
+  const pdfRef = useRef<HTMLDivElement>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdf, setPdf] = useState<{ file: File; url: string; pages: string[] } | null>(null);
   const [pdfView, setPdfView] = useState(false);
@@ -222,17 +224,18 @@ export default function Report() {
 
   const periodText = week ? `Semana ${week.n} · ${rangeText(week.from, week.to)}` : `Todo el programa, desde el ${fmtDate(start)}`;
 
-  // PDF: se genera en la propia app (window.print() no funciona en el iPhone con la app abierta como app).
+  // PDF: siempre es el resumen de todas las semanas (PdfSummary), elija la pestaña que se elija.
+  // Se genera en la propia app (window.print() no funciona en el iPhone con la app abierta como app).
   // Al terminar se muestra una ventana con «Guardar» (hoja Compartir de iOS) y «Ver» (vista previa):
   // tiene que ser un toque nuevo, porque iOS no deja abrirla al final de una tarea larga.
   const exportPdf = async () => {
-    if (!pageRef.current || pdfBusy) return;
+    if (!pdfRef.current || pdfBusy) return;
     setPdfBusy(true);
     try {
       const d = new Date();
       const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const name = `Informe gym - ${week ? `semana ${week.n}` : 'programa completo'} - ${stamp}.pdf`;
-      const { blob, pages } = await buildReportPdf(pageRef.current);
+      const name = `Informe gym - todas las semanas - ${stamp}.pdf`;
+      const { blob, pages } = await buildReportPdf(pdfRef.current);
       setPdfView(false);
       setPdfZoom(false);
       setPdf({ file: new File([blob], name, { type: 'application/pdf' }), url: URL.createObjectURL(blob), pages });
@@ -313,7 +316,7 @@ export default function Report() {
         title="Informe"
         sub={`${periodText}${week?.current ? ' (esta semana)' : ''}`}
         right={
-          <button type="button" className="btn sm pdf-btn" onClick={exportPdf} disabled={pdfBusy} aria-label="Exportar el informe en PDF">
+          <button type="button" className="btn sm pdf-btn" onClick={exportPdf} disabled={pdfBusy} aria-label="Exportar en PDF el resumen de todas las semanas">
             <FileDown size={17} /> {pdfBusy ? 'Creando…' : 'PDF'}
           </button>
         }
@@ -341,6 +344,9 @@ export default function Report() {
         </section>
       )}
       {tabs}
+      <div hidden>
+        <PdfSummary ref={pdfRef} config={data.config} entries={data.entries} sessions={sessions} weeks={weeks} start={start} end={Math.max(weeks[weeks.length - 1].to, now + 1)} now={now} />
+      </div>
     </>
   );
 

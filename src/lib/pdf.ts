@@ -76,6 +76,14 @@ export async function buildReportPdf(page: HTMLElement): Promise<ReportPdf> {
 
   try {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    // html-to-image pierde el estilo de los textos de las gráficas (salían grandes y en negro): se fija en línea.
+    clone.querySelectorAll<SVGTextElement>('svg text').forEach((t) => {
+      const cs = getComputedStyle(t);
+      t.style.fontSize = cs.fontSize;
+      t.style.fontFamily = cs.fontFamily;
+      t.style.fontWeight = cs.fontWeight;
+      t.style.fill = cs.fill;
+    });
     const blocks = Array.from(clone.children).filter((el): el is HTMLElement => el instanceof HTMLElement && el.offsetHeight > 0);
 
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });

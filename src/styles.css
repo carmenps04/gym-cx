@@ -557,3 +557,21 @@ details.more[open] > summary::before { transform: rotate(90deg); }
 .pdf-viewer-pages.zoom { align-items: flex-start; }
 .pdf-viewer-pages.zoom img { width: 200%; max-width: none; flex: none; }
 .pdf-viewer-hint { font-size: var(--fs-cap); color: var(--muted); text-align: center; align-self: stretch; }
+
+/* ------------------------------------------------------------------ Resumen de todas las semanas (solo PDF) */
+.sum-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.sum-table th { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; padding: 0 4px 6px; border-bottom: 1px solid var(--line); }
+.sum-table td { text-align: center; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.sum-table th:first-child, .sum-table td:first-child { text-align: left; }
+.sum-table td small { display: block; font-size: 10.5px; color: var(--muted); }
+.sum-table tr.sum-off td { color: var(--muted); }
+.sum-table tr.sum-total td { border-bottom: 0; border-top: 2px solid var(--accent); background: var(--surface-2); font-weight: 600; }
+.sum-gains li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.sum-gains li:first-child { border-top: 0; }
+.sum-gain-name { font-weight: 600; }
+.sum-gain-load { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.sum-gain-delta { color: var(--accent-text); white-space: nowrap; min-width: 62px; text-align: right; }
+.sum-empty, .sum-rest { font-size: 12.5px; color: var(--muted); }
+.sum-week-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pdf-render .sum-week { padding: 12px 18px; gap: 6px; }
+.pdf-render .sum-foot { border-top: 0; padding: 0 4px; }
