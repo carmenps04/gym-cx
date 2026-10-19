@@ -27,3 +27,23 @@ test('sin cargas en el periodo no hay nada que comparar', () => {
   assert.equal(r.gains.length, 0);
   assert.equal(r.compared, 0);
 });
+
+import { daysUntil, dietitianPeriod, periodWeeks } from '../src/lib/report.ts';
+
+test('periodo del dietista: desde el día que se añade hasta el final del día de la cita', () => {
+  const p = dietitianPeriod({ from: '2026-10-19', date: '2026-11-04' })!;
+  assert.equal(p.from, new Date(2026, 9, 19).getTime());
+  assert.equal(p.to, new Date(2026, 10, 5).getTime());
+  assert.equal(daysUntil('2026-11-04', day(10, 19)), 16);
+  assert.equal(daysUntil('2026-10-19', day(10, 19)), 0);
+});
+
+test('semanas del periodo recortadas y numeradas como en el programa', () => {
+  const start = new Date(2026, 8, 28).getTime(); // lunes 28 sep = semana 1
+  const p = dietitianPeriod({ from: '2026-10-15', date: '2026-10-28' })!;
+  const w = periodWeeks(start, p.from, p.to, day(10, 19));
+  assert.deepEqual(w.map((x) => x.n), [3, 4, 5]);
+  assert.equal(w[0].from, p.from); // empieza el jueves 15, no el lunes
+  assert.equal(w[2].to, p.to);
+  assert.deepEqual(w.map((x) => [x.current, x.future]), [[false, false], [true, false], [false, true]]);
+});

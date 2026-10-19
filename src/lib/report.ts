@@ -563,3 +563,34 @@ export function gainsInWindow(sessions: { at: number; exercises: ExerciseLog[] }
   out.gains.sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name, 'es'));
   return out;
 }
+
+// ------------------------------------------------------------------ Cita con el dietista
+
+/** Periodo del informe para el dietista: del día «from» a las 00:00 al final del día de la cita. */
+export function dietitianPeriod(a: { date: string; from: string }): { from: number; to: number } | null {
+  const from = parseLocalDate(a.from);
+  const date = parseLocalDate(a.date);
+  if (from == null || date == null) return null;
+  return { from: Math.min(from, date), to: addDays(date, 1) };
+}
+
+/** Días naturales que faltan para la cita (0 = hoy, negativo = ya pasó). */
+export function daysUntil(date: string, now: number): number | null {
+  const d = parseLocalDate(date);
+  return d == null ? null : calendarDayDiff(now, d);
+}
+
+/**
+ * Semanas (de lunes a domingo) que tocan el periodo, recortadas a él. «n» es la semana del programa
+ * (puede ser 0 o negativa si el periodo empieza antes que el programa).
+ */
+export function periodWeeks(programStartMs: number, from: number, to: number, now: number): WeekRange[] {
+  const out: WeekRange[] = [];
+  for (let ws = mondayOf(from); ws < to; ws = addDays(ws, 7)) {
+    const a = Math.max(ws, from);
+    const b = Math.min(addDays(ws, 7), to);
+    const n = Math.round((ws - programStartMs) / (7 * DAY)) + 1;
+    out.push({ n, from: a, to: b, future: a > now, current: now >= a && now < b });
+  }
+  return out;
+}

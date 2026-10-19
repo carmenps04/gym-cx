@@ -2,7 +2,7 @@ import { forwardRef } from 'react';
 import { feelSummary, gainsInWindow, inRange, kneeSummary, mean, treadmillSummary } from '../lib/report';
 import type { Gain, GainSummary, LoadSession, WeekRange } from '../lib/report';
 import type { Config, Entry, TreadmillRating } from '../types';
-import { fmtDate, fmtLoad, fmtNum, fmtShort } from '../lib/util';
+import { fmtLoad, fmtNum, fmtShort } from '../lib/util';
 import { LineChart } from './charts';
 
 /**
@@ -77,9 +77,22 @@ interface Props {
   start: number;
   end: number;
   now: number;
+  /** Rótulo superior, título y línea bajo el título. */
+  eyebrow: string;
+  title: string;
+  sub: string;
+  /** Texto de la sección de cargas del periodo completo. */
+  totalTitle: string;
+  totalSub: string;
 }
 
-export const PdfSummary = forwardRef<HTMLDivElement, Props>(function PdfSummary({ config, entries, sessions, weeks, start, end, now }, ref) {
+/** «Semana 3» si es del programa; si no, por fechas. */
+function weekLabel(w: WeekRange): string {
+  return w.n >= 1 ? `Semana ${w.n}` : `Semana del ${rangeText(w.from, w.to)}`;
+}
+const weekShort = (w: WeekRange, i: number) => (w.n >= 1 ? `S${w.n}` : `${i + 1}`);
+
+export const PdfSummary = forwardRef<HTMLDivElement, Props>(function PdfSummary({ config, entries, sessions, weeks, start, end, now, eyebrow, title, sub, totalTitle, totalSub }, ref) {
   const past = weeks.filter((w) => !w.future);
   const rows = past.map((w) => {
     const es = inRange(entries, w.from, w.to);
@@ -105,17 +118,63 @@ export const PdfSummary = forwardRef<HTMLDivElement, Props>(function PdfSummary(
   const total = gainsInWindow(sessions, start, end);
   const withData = rows.filter((r) => r.hasData);
   const chartRows = rows.filter((r) => r.es.length > 0);
-  const lastN = past.length ? past[past.length - 1].n : 1;
+
+  // ---------------------------------------------------------------- Resumen en frases (lo primero que se lee)
+  const lines: string[] = [];
+  const legN = all.filter((e) => e.isLeg).length;
+  // Sesiones por semana según los días transcurridos (la semana en curso no cuenta como entera).
+  const elapsedDays = (Math.min(end, now + 1) - start) / (24 * 3600_000);
+  const perWeek = elapsedDays >= 7 ? `, ${f1(all.length / (elapsedDays / 7))} por semana de media` : '';
+  lines.push(
+    all.length
+      ? `${all.length} ${all.length === 1 ? 'sesión registrada' : 'sesiones registradas'}${legN ? ` (${legN} de pierna)` : ''}${perWeek}.`
+      : 'Aún no hay sesiones registradas en este periodo.',
+  );
+  if (total.compared) {
+    const top = total.gains[0];
+    lines.push(
+      `Cargas: suben ${total.gains.length} de ${total.compared} ejercicios${top ? `; la mayor subida, ${top.name} (${gainText(top)})` : ''}.${total.down ? ` ${total.down} ${total.down === 1 ? 'baja' : 'bajan'}.` : ''}`,
+    );
+  }
+  const kneeWeeks = rows.filter((r) => r.knee != null);
+  if (allKnee.avgSession != null) {
+    const first = kneeWeeks[0];
+    const last = kneeWeeks[kneeWeeks.length - 1];
+    const evo =
+      kneeWeeks.length >= 2 ? `; de ${f1(first.knee)} la primera semana a ${f1(last.knee)} la última (${last.knee! - first.knee! <= -0.5 ? 'mejora' : last.knee! - first.knee! >= 0.5 ? 'empeora' : 'estable'})` : '';
+    lines.push(`Rodilla: dolor medio ${f1(allKnee.avgSession)}/10 en las sesiones de pierna${evo}.`);
+  }
+  const sleepH = mean(all.map((e) => e.sleepHours));
+  const sleepQ = mean(all.map((e) => e.sleepQuality));
+  const energy = mean(all.map((e) => e.energy));
+  const recovery = mean(all.map((e) => e.recovery));
+  if (all.length && (sleepH != null || energy != null || recovery != null)) {
+    lines.push(
+      `Descanso: ${sleepH != null ? `${f1(sleepH)} h de sueño${sleepQ != null ? ` (calidad ${f1(sleepQ)}/5)` : ''}` : 'sin datos de sueño'}; energía ${f1(energy)}/5 y recuperación ${f1(recovery)}/5.`,
+    );
+  }
+  const tmAll = treadmillSummary(all);
+  if (tmAll.sessions.length) {
+    const v: Record<typeof tmAll.verdict, string> = { poco: 'casi siempre poco exigente', bien: 'casi siempre bien tolerada', mucho: 'casi siempre demasiado exigente', mixto: 'con valoraciones repartidas', pocos: 'sin valoraciones suficientes' };
+    lines.push(`Cinta: ${tmAll.sessions.length} ${tmAll.sessions.length === 1 ? 'sesión' : 'sesiones'}, ${v[tmAll.verdict]} (${f1(tmAll.avgMin)} min de media).`);
+  }
 
   return (
     <div className="page report pdf-sum" ref={ref}>
       <div className="print-head">
-        <p className="print-app">Diario gym · Informe</p>
-        <h1>Programa completo · semanas 1–{lastN}</h1>
-        <p>
-          Del {fmtDate(start)} al {fmtDate(Math.min(now, end - 1))} · {all.length} {all.length === 1 ? 'sesión' : 'sesiones'} con cuestionario · generado el {fmtDate(now)}
-        </p>
+        <p className="print-app">{eyebrow}</p>
+        <h1>{title}</h1>
+        <p>{sub}</p>
       </div>
+
+      <section className="card">
+        <h2 className="h3">En resumen</h2>
+        <ul className="sum-lines">
+          {lines.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+      </section>
 
       <section className="card">
         <h2 className="h3">Resumen por semana</h2>
@@ -134,9 +193,9 @@ export const PdfSummary = forwardRef<HTMLDivElement, Props>(function PdfSummary(
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.w.n} className={r.hasData ? '' : 'sum-off'}>
+              <tr key={r.w.from} className={r.hasData ? '' : 'sum-off'}>
                 <td>
-                  <b>{r.w.n}</b>
+                  <b>{r.w.n >= 1 ? r.w.n : '·'}</b>
                   <small>{rangeText(r.w.from, r.w.to)}</small>
                 </td>
                 <td>{r.es.length || '—'}</td>
@@ -178,7 +237,7 @@ export const PdfSummary = forwardRef<HTMLDivElement, Props>(function PdfSummary(
           <h2 className="h3">Evolución semanal</h2>
           <LineChart
             label="Medias semanales de energía, recuperación y calidad del sueño"
-            labels={chartRows.map((r) => `S${r.w.n}`)}
+            labels={chartRows.map((r, i) => weekShort(r.w, i))}
             min={1}
             max={5}
             height={140}
@@ -191,23 +250,24 @@ export const PdfSummary = forwardRef<HTMLDivElement, Props>(function PdfSummary(
           {chartRows.some((r) => r.knee != null) && (
             <>
               <h3 className="chart-title">Dolor de rodilla (media semanal, 0–10)</h3>
-              <LineChart label="Media semanal del dolor de rodilla" labels={chartRows.map((r) => `S${r.w.n}`)} min={0} max={10} height={120} series={[{ name: 'Rodilla', color: 'var(--c2)', values: chartRows.map((r) => r.knee) }]} />
+              <LineChart label="Media semanal del dolor de rodilla" labels={chartRows.map((r, i) => weekShort(r.w, i))} min={0} max={10} height={120} series={[{ name: 'Rodilla', color: 'var(--c2)', values: chartRows.map((r) => r.knee) }]} />
             </>
           )}
         </section>
       )}
 
       <section className="card">
-        <h2 className="h3">Progreso de cargas en todo el programa</h2>
-        <p className="card-sub">Última marca frente a la de antes de empezar el programa (o la primera dentro de él). Solo los ejercicios que suben.</p>
+        <h2 className="h3">{totalTitle}</h2>
+        <p className="card-sub">{totalSub}</p>
         <GainList s={total} empty="Ningún ejercicio supera todavía su marca de referencia." />
       </section>
 
       {withData.map((r) => (
-        <section key={r.w.n} className="card sum-week">
+        <section key={r.w.from} className="card sum-week">
           <div className="sum-week-head">
             <h2 className="h3">
-              Semana {r.w.n} <span className="muted">· {rangeText(r.w.from, r.w.to)}</span>
+              {weekLabel(r.w)}
+              {r.w.n >= 1 && <span className="muted"> · {rangeText(r.w.from, r.w.to)}</span>}
             </h2>
             {r.w.current && <span className="tag">En curso</span>}
           </div>

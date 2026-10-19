@@ -575,3 +575,11 @@ details.more[open] > summary::before { transform: rotate(90deg); }
 .sum-week-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .pdf-render .sum-week { padding: 12px 18px; gap: 6px; }
 .pdf-render .sum-foot { border-top: 0; padding: 0 4px; }
+
+/* Cita con el dietista (inicio) y resumen en frases del PDF */
+.card.diet { gap: 12px; }
+.diet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.diet-head .h3 { font-size: var(--fs-title); margin-top: 2px; }
+.diet-sub { margin-top: 0; }
+.diet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sum-lines { margin: 0; padding-left: 18px; list-style: disc; display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.45; }

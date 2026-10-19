@@ -15,6 +15,14 @@ export interface Config {
   nbBackupAt?: string;
   /** Lunes en que empieza el programa de 6 semanas (AAAA-MM-DD). Si falta, el de la primera sesión. */
   programStart?: string;
+  /** Próxima cita con el dietista. null = sin cita (null y no ausente: Firestore guarda con merge). */
+  dietitian?: DietitianAppt | null;
+}
+
+/** El informe para el dietista va desde «from» hasta el día de la cita, ambos incluidos (AAAA-MM-DD). */
+export interface DietitianAppt {
+  date: string;
+  from: string;
 }
 
 /** Mejor serie del ejercicio en la sesión. kg null = peso corporal. */

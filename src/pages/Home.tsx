@@ -2,17 +2,17 @@ import { Link } from 'react-router-dom';
 import { CalendarPlus, ChevronRight, ClipboardCheck } from 'lucide-react';
 import { useData } from '../state/data';
 import { useAuth } from '../state/auth';
-import { H24_OPEN_AFTER, pending24h, sortByDate, suggestDay } from '../lib/report';
+import { H24_OPEN_AFTER, pending24h, suggestDay } from '../lib/report';
 import { fmtDate, fmtTime } from '../lib/util';
 import { calendarLinkFor } from '../lib/calendar';
 import { NbImportButton } from '../components/NbImport';
+import { DietitianCard } from '../components/DietitianCard';
 
 export default function Home() {
   const { data, mode } = useData();
   const auth = useAuth();
   const now = Date.now();
   const { due, waiting } = pending24h(data.entries, now);
-  const recent = sortByDate(data.entries).reverse().slice(0, 8);
   const next = suggestDay(data.config, data.entries);
   const noDays = data.config.days.length === 0;
 
@@ -77,29 +77,7 @@ export default function Home() {
         </div>
       ))}
 
-      {recent.length > 0 && (
-        <section className="list-section">
-          <h2 className="h3 section-title">Últimas sesiones</h2>
-          <ul className="list">
-            {recent.map((e) => (
-              <li key={e.id}>
-                <Link to={`/sesion/${e.id}`} className="list-item">
-                  <div>
-                    <b>{e.dayName}</b>
-                    <span className="muted"> · {fmtDate(e.at)}</span>
-                    <div className="list-meta">
-                      Rodilla {e.kneeDuring ?? '—'} → {e.knee24h ?? '?'}
-                      {e.treadmill.done && ' · cinta'}
-                      {e.dayFeel != null && ` · sensación ${e.dayFeel}/5`}
-                    </div>
-                  </div>
-                  <ChevronRight size={18} className="muted" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <DietitianCard />
     </div>
   );
 }
