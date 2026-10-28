@@ -9,6 +9,7 @@ import { EMPTY_SEGMENT, finalizeTreadmill, segmentsOf, summarizeSegments } from 
 import { NB_NAMES } from '../lib/nivelbestia';
 import { NbImportButton } from '../components/NbImport';
 import { OcrImport } from '../components/OcrImport';
+import type { OcrApplied } from '../components/OcrImport';
 import { fmtDate, fmtLoad, fmtNum, fmtTime, fromLocalInput, toLocalInput, uid } from '../lib/util';
 import { Card, Empty, NumField, PageHeader, PainScale, Scale5, Segmented } from '../components/ui';
 
@@ -87,6 +88,25 @@ export default function EntryForm() {
     return m;
   }, [draft.exercises, imported, sessions, dateKey]);
 
+  // Nombres que el lector de capturas puede reconocer: los del día, los de toda la rutina,
+  // los ya registrados y los de Nivel Bestia.
+  const knownNames = useMemo(() => {
+    const all = [
+      ...draft.exercises.map((x) => x.name),
+      ...days.flatMap((d) => d.exercises),
+      ...data.loads.flatMap((l) => l.exercises.map((x) => x.name)),
+      ...data.entries.flatMap((e) => e.exercises.map((x) => x.name)),
+      ...Object.values(NB_NAMES),
+    ];
+    const seen = new Set<string>();
+    return all.filter((n) => {
+      const k = normName(n);
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [draft.exercises, days, data.loads, data.entries]);
+
   if (!existing && id) {
     return (
       <div className="page">
@@ -117,39 +137,23 @@ export default function EntryForm() {
 
   const chooseDay = (d: DayDef) => setDraft((x) => ({ ...x, dayId: d.id, dayName: d.name, isLeg: d.isLeg, exercises: rowsFor(d, x.exercises) }));
 
-  // Nombres que el lector de capturas puede reconocer: los del día, los de toda la rutina,
-  // los ya registrados y los de Nivel Bestia.
-  const knownNames = useMemo(() => {
-    const all = [
-      ...draft.exercises.map((x) => x.name),
-      ...days.flatMap((d) => d.exercises),
-      ...data.loads.flatMap((l) => l.exercises.map((x) => x.name)),
-      ...data.entries.flatMap((e) => e.exercises.map((x) => x.name)),
-      ...Object.values(NB_NAMES),
-    ];
-    const seen = new Set<string>();
-    return all.filter((n) => {
-      const k = normName(n);
-      if (!k || seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-  }, [draft.exercises, days, data.loads, data.entries]);
-
-  /** Vuelca las cargas leídas de las capturas en la lista manual (sin guardar todavía). */
-  const applyOcr = (rows: ExerciseLog[]) => {
+  /**
+   * Vuelca las cargas leídas de las capturas en la lista manual (sin guardar todavía). Cada carga va al
+   * ejercicio elegido en la revisión; las que no tienen ejercicio en la sesión se añaden al final.
+   */
+  const applyOcr = (rows: OcrApplied[]) => {
     setDraft((d) => {
       const exercises = d.exercises.map((x) => ({ ...x }));
       for (const r of rows) {
-        const i = exercises.findIndex((x) => normName(x.name) === normName(r.name));
+        const want = normName(r.target ?? r.name);
+        const i = exercises.findIndex((x) => normName(x.name) === want);
         if (i >= 0) exercises[i] = { ...exercises[i], kg: r.kg, reps: r.reps };
-        else exercises.push({ ...r });
+        else exercises.push({ name: r.target ?? r.name, kg: r.kg, reps: r.reps });
       }
       return { ...d, exercises };
     });
     setManualOpen(true);
   };
-
 
   const addExercise = () => {
     const name = newEx.trim();
@@ -320,7 +324,7 @@ export default function EntryForm() {
           <>
             <p className="card-sub">Carga media de cada ejercicio: media de kg y de repeticiones de sus series.</p>
             <div className="load-choice">
-              <OcrImport known={knownNames} onApply={applyOcr} />
+              <OcrImport known={knownNames} targets={draft.exercises.map((x) => x.name)} onApply={applyOcr} />
               <button type="button" className={`choice${manualOpen ? ' on' : ''}`} aria-expanded={manualOpen} onClick={() => setManualOpen((o) => !o)}>
                 <PencilLine size={22} />
                 <span>Escribir a mano</span>

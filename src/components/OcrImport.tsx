@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react';
 import { ClipboardPaste, ImagePlus, X } from 'lucide-react';
-import type { ExerciseLog } from '../types';
 import { useUi } from '../state/ui';
 import { parseScreenshots } from '../lib/ocrParse';
 import { resolveNbName } from '../lib/nivelbestia';
 import type { OcrExercise } from '../lib/ocrParse';
 import type { OcrProgress } from '../lib/ocr';
 import { NumField } from './ui';
+import { assignTargets } from '../lib/ocrMatch';
 
 interface Row {
   include: boolean;
@@ -18,10 +18,21 @@ interface Row {
   sets: number;
   /** Series leídas, para comprobarlas de un vistazo: «4×11 · 4×12 · 4×10». */
   detail: string;
+  /** Ejercicio de la sesión en el que se rellena ('' = se añade como ejercicio nuevo). */
+  target: string;
 }
 
-const toRows = (xs: OcrExercise[]): Row[] =>
-  xs.map((e) => ({
+/** Carga leída lista para volcar en la sesión. */
+export interface OcrApplied {
+  target: string | null;
+  name: string;
+  kg: number | null;
+  reps: number | null;
+}
+
+const toRows = (xs: OcrExercise[], targets: string[]): Row[] => {
+  const to = assignTargets(xs.map((e) => e.name), targets);
+  return xs.map((e, i) => ({
     include: e.avg != null,
     name: e.name,
     matched: e.matched,
@@ -30,13 +41,15 @@ const toRows = (xs: OcrExercise[]): Row[] =>
     reps: e.avg?.reps ?? null,
     sets: e.sets.length,
     detail: e.sets.map((x) => `${x.kg == null ? '—' : String(x.kg).replace('.', ',')}×${x.reps}`).join(' · '),
+    target: to[i] == null ? '' : targets[to[i] as number],
   }));
+};
 
 /**
  * Lee capturas de pantalla de Nivel Bestia (o texto pegado) y propone las cargas de cada ejercicio.
  * Nada se rellena sin pasar por la revisión.
  */
-export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows: ExerciseLog[]) => void }) {
+export function OcrImport({ known, targets, onApply }: { known: string[]; targets: string[]; onApply: (rows: OcrApplied[]) => void }) {
   const ui = useUi();
   const input = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<'idle' | 'reading' | 'review' | 'paste'>('idle');
@@ -49,7 +62,7 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
     setRawText(texts.join('\n\n'));
     // Solo ejercicios con series leídas: los nombres sueltos (menús, listas de la rutina…) se descartan.
     const found = parseScreenshots(texts, known, (n) => resolveNbName(n, known)).filter((e) => e.sets.length > 0);
-    setRows(toRows(found));
+    setRows(toRows(found, targets));
     setStage('review');
   };
 
@@ -67,6 +80,9 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
   };
 
   const setRow = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  // Cada ejercicio de la sesión recibe una sola carga: si otra fila ya iba ahí, pasa a «nuevo».
+  const setTarget = (i: number, target: string) =>
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, target } : target && r.target === target ? { ...r, target: '' } : r)));
 
   const apply = () => {
     const chosen = rows.filter((r) => r.include && r.name.trim() && (r.kg != null || r.reps != null));
@@ -74,7 +90,7 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
       ui.toast('No hay ninguna carga marcada para rellenar.');
       return;
     }
-    onApply(chosen.map((r) => ({ name: r.name.trim(), kg: r.kg, reps: r.reps })));
+    onApply(chosen.map((r) => ({ target: r.target || null, name: r.name.trim(), kg: r.kg, reps: r.reps })));
     setStage('idle');
     ui.toast(`${chosen.length} ${chosen.length === 1 ? 'ejercicio rellenado' : 'ejercicios rellenados'}. Revísalos antes de guardar.`);
   };
@@ -158,6 +174,17 @@ export function OcrImport({ known, onApply }: { known: string[]; onApply: (rows:
                           media de {r.sets} {r.sets === 1 ? 'serie' : 'series'}
                         </span>
                       </div>
+                      <label className="ocr-target">
+                        <span>Rellenar en</span>
+                        <select value={r.target} onChange={(e) => setTarget(i, e.target.value)}>
+                          {targets.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                          <option value="">Añadir como ejercicio nuevo</option>
+                        </select>
+                      </label>
                       <p className="ocr-detail">
                         {r.detail}
                         {r.raw && r.raw.split(' (')[0] !== r.name ? ` · en Nivel Bestia: ${r.raw}` : r.raw.includes('(kg') ? ` · ${r.raw.slice(r.raw.indexOf('(') + 1, -1)}` : ''}
