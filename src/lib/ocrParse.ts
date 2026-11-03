@@ -167,23 +167,32 @@ export interface NbScreen {
 }
 
 const TITLE_RE = /corrige\s+tu\s+ejercicio/i;
-const HEADER_RE = /repeticion/i;
+const HEADER_RE = /repeticion|segundos/i;
+/** Ejercicios por tiempo (plancha): la columna es «Segundos» y caben más de 100. */
+const MAX_SECONDS = 600;
 const END_RE = /quitar|a[ñn]adir\s+serie|cancelar|guardar/i;
 
 /** Fila «1 4 11», «2 12.5 11» o «3 12» (sin kg). Devuelve null si no es una fila de serie. */
-export function nbRow(line: string): OcrSet | null {
-  const t = fixDigits(line).replace(/[|[\]{}]/g, ' ').replace(/\s+/g, ' ').trim();
+export function nbRow(line: string, maxReps = MAX_REPS): OcrSet | null {
+  const t = fixDigits(line)
+    .replace(/[|[\]{}]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    // Un «0» solo en su casilla a veces se lee «o)», «(o» u «O».
+    .map((w) => (/^\(?[oO]\)?$/.test(w) ? '0' : w))
+    .join(' ');
   let m = /^(\d{1,2})\s+(\d{1,3}(?:[.,]\d{1,2})?)\s+(\d{1,3})$/.exec(t);
   if (m) {
     const kg = num(m[2]);
     const reps = num(m[3]);
-    if (reps > 0 && reps <= MAX_REPS && kg <= MAX_KG) return { kg: kg > 0 ? kg : null, reps };
+    if (reps > 0 && reps <= maxReps && kg <= MAX_KG) return { kg: kg > 0 ? kg : null, reps };
     return null;
   }
   m = /^(\d{1,2})\s+(\d{1,3})$/.exec(t);
   if (m) {
     const reps = num(m[2]);
-    if (reps > 0 && reps <= MAX_REPS) return { kg: null, reps };
+    if (reps > 0 && reps <= maxReps) return { kg: null, reps };
   }
   return null;
 }
@@ -203,9 +212,10 @@ export function parseNbScreen(text: string): NbScreen | null {
     .trim();
   if (!name) return null;
   const note = /por\s+mano/i.test(lines[h]) ? 'por mano' : /por\s+lado/i.test(lines[h]) ? 'por lado' : null;
+  const maxReps = /segundos/i.test(lines[h]) ? MAX_SECONDS : MAX_REPS;
   const sets: OcrSet[] = [];
   for (let i = h + 1; i < lines.length && !END_RE.test(lines[i]); i++) {
-    const r = nbRow(lines[i]);
+    const r = nbRow(lines[i], maxReps);
     if (r) sets.push(r);
   }
   return { name, kgNote: note, sets };

@@ -113,3 +113,33 @@ test('varias capturas → media por ejercicio y nombres de la app', async () => 
     ],
   );
 });
+
+test('capturas del 03/11/2026: nombres nuevos de Nivel Bestia, plancha en segundos y «0» leído como «o)»', async () => {
+  const { parseScreenshots } = await import('../src/lib/ocrParse.ts');
+  const { resolveNbName } = await import('../src/lib/nivelbestia.ts');
+  const { assignTargets } = await import('../src/lib/ocrMatch.ts');
+  const screen = (name: string, header: string, rows: string) =>
+    `€ Volver\nCorrige tu ejercicio\n${name}\nSerie ${header}\n${rows}\nQuitar última serie Añadir serie\nSIGUES CON\nPress de hombros sentado ... x`;
+  const texts = [
+    screen('Peso muerto convencional', 'Kg (opcional) Repeticiones', '1 30 6\n2 30 6\n3 30 6'),
+    screen('Press de banca en máquina Smith', 'Kg (opcional) Repeticiones', '1 20 10\n2 20 10\n3 20 10'),
+    screen('Elevación de talones sentado', 'Kg (opcional) Repeticiones', '1 5 15\n2 5 15\n3 5 15'),
+    screen('Remo en polea baja', 'Kg (opcional) Repeticiones', '1 30 12\n2 30 12\n3 30 12'),
+    screen('Plancha', 'Segundos', '1 45\n2 45\n3 120'),
+    screen('Pallof press', 'Kg por lado (opcional) Repeticiones', '1 o) 12\n2 o) 12'),
+  ];
+  const day = ['Peso muerto', 'Press banca en multipower', 'Remo en polea baja', 'Gemelo sentado', 'Press militar sentado en multipower', 'Plancha'];
+  const read = parseScreenshots(texts, day, (n) => resolveNbName(n, day)).filter((e) => e.sets.length > 0);
+  const to = assignTargets(read.map((e) => e.name), day);
+  assert.deepEqual(
+    read.map((e, i) => [to[i] == null ? null : day[to[i] as number], e.avg?.kg ?? null, e.avg?.reps]),
+    [
+      ['Peso muerto', 30, 6],
+      ['Press banca en multipower', 20, 10],
+      ['Gemelo sentado', 5, 15],
+      ['Remo en polea baja', 30, 12],
+      ['Plancha', null, 70],
+      [null, null, 12], // Pallof press no está en el día: se añade como nuevo, a peso corporal
+    ],
+  );
+});

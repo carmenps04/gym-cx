@@ -3,7 +3,7 @@
 // («Press de banca con barra» frente a «Press banca»), así que se compara por palabras y por equivalencias
 // conocidas de Nivel Bestia, y cada ejercicio de la sesión recibe como mucho una carga.
 import { normName } from './report.ts';
-import { NB_NAMES, NB_OLD_NAMES } from './nivelbestia.ts';
+import { nbCodeOf } from './nivelbestia.ts';
 import { similarity } from './ocrParse.ts';
 
 const STOP = new Set(['de', 'del', 'en', 'con', 'a', 'al', 'la', 'el', 'las', 'los', 'y', 'una', 'un', 'por', 'para']);
@@ -17,13 +17,7 @@ function tokens(s: string): string[] {
     .map((w) => (w.length > 5 && w.endsWith('es') ? w.slice(0, -2) : w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w));
 }
 
-/** Código de Nivel Bestia de un nombre (actual o antiguo), para tratar como iguales sus variantes. */
-function nbCode(name: string): string | null {
-  const k = normName(name);
-  for (const [code, n] of Object.entries(NB_NAMES)) if (normName(n) === k) return code;
-  for (const [code, n] of Object.entries(NB_OLD_NAMES)) if (normName(n) === k) return code;
-  return null;
-}
+const nbCode = nbCodeOf;
 
 /** Parecido de 0 a 1 entre el nombre leído y el de la sesión. */
 export function nameScore(a: string, b: string): number {

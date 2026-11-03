@@ -86,6 +86,30 @@ export const NB_OLD_NAMES: Record<string, string> = {
   'smith-machine-seated-overhead-press': 'Press militar sentado en multipower',
 };
 
+/**
+ * Nombres que muestra la pantalla «Corrige tu ejercicio» y que no coinciden con los de arriba (comprobados con
+ * capturas del 03/11/2026). Los datos guardados siguen usando el nombre de NB_NAMES, así que estos solo sirven
+ * para reconocer el ejercicio al leer una captura.
+ */
+export const NB_SCREEN_NAMES: Record<string, string[]> = {
+  'gemelo-sentado': ['Elevación de talones sentado'],
+  'pallof-press': ['Pallof press'],
+  'peso-muerto': ['Peso muerto convencional'],
+  'smith-machine-bench-press': ['Press de banca en máquina Smith', 'Press banca en máquina Smith'],
+  'smith-machine-seated-overhead-press': ['Press de hombros sentado en máquina Smith'],
+};
+
+/** Todos los nombres con los que se conoce un código: el actual, el antiguo y los de la pantalla. */
+export function nbAllNames(code: string): string[] {
+  return [NB_NAMES[code], NB_OLD_NAMES[code], ...(NB_SCREEN_NAMES[code] ?? [])].filter((n): n is string => Boolean(n));
+}
+
+/** Código de Nivel Bestia de un nombre cualquiera (actual, antiguo o de pantalla), o null. */
+export function nbCodeOf(name: string): string | null {
+  const k = normName(name);
+  return Object.keys(NB_NAMES).find((c) => nbAllNames(c).some((n) => normName(n) === k)) ?? null;
+}
+
 /** Nombre legible: el del diccionario o, si es un ejercicio nuevo, el código con espacios. */
 export function nbName(id: string): string {
   if (NB_NAMES[id]) return NB_NAMES[id];
@@ -173,13 +197,15 @@ export function guessDay(days: DayDef[], names: string[]): DayDef | null {
  * historial no se parta en dos (p. ej. «Contractor de pecho» → «Aperturas en máquina» si así se guardó antes).
  */
 export function resolveNbName(screenName: string, known: string[]): string {
-  const key = normName(screenName);
   const has = (n: string) => known.find((k) => normName(k) === normName(n));
-  const code = Object.keys(NB_NAMES).find((c) => normName(NB_NAMES[c]) === key);
-  // Primero el nombre antiguo, si los días o el historial lo usan; si no, el de Nivel Bestia.
-  if (code && NB_OLD_NAMES[code] && has(NB_OLD_NAMES[code])) return has(NB_OLD_NAMES[code])!;
   const direct = has(screenName);
   if (direct) return direct;
-  if (code) return NB_NAMES[code];
-  return screenName.charAt(0).toUpperCase() + screenName.slice(1);
+  const code = nbCodeOf(screenName);
+  if (!code) return screenName.charAt(0).toUpperCase() + screenName.slice(1);
+  // El nombre que ya usan tus días o tu historial para ese ejercicio (antiguo primero, luego el actual).
+  for (const n of [NB_OLD_NAMES[code], NB_NAMES[code], ...(NB_SCREEN_NAMES[code] ?? [])]) {
+    const k = n && has(n);
+    if (k) return k;
+  }
+  return NB_NAMES[code];
 }
