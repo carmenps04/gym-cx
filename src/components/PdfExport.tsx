@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Eye, Share, X } from 'lucide-react';
-import { buildReportPdf, canShareFile } from '../lib/pdf';
+import { canShareFile } from '../lib/pdf';
+import { buildSummaryPdf } from '../lib/summaryPdf';
+import type { Summary } from '../lib/summary';
 import { useUi } from '../state/ui';
 
 /**
- * Genera un PDF a partir de un elemento de la página y muestra la ventana «PDF listo» con
+ * Genera el PDF del informe resumido y muestra la ventana «PDF listo» con
  * «Guardar» (hoja Compartir de iOS) y «Ver» (vista previa dentro de la app).
  * «Guardar» tiene que ser un toque nuevo: iOS no deja abrir la hoja al final de una tarea larga.
  */
-export function usePdfExport(): { busy: boolean; run: (el: HTMLElement | null, fileName: string) => Promise<void>; dialog: ReactNode } {
+export function usePdfExport(): { busy: boolean; run: (build: () => Summary, fileName: string) => Promise<void>; dialog: ReactNode } {
   const ui = useUi();
   const [busy, setBusy] = useState(false);
   const [pdf, setPdf] = useState<{ file: File; url: string; pages: string[] } | null>(null);
@@ -22,16 +24,18 @@ export function usePdfExport(): { busy: boolean; run: (el: HTMLElement | null, f
     [pdf],
   );
 
-  const run = async (el: HTMLElement | null, fileName: string) => {
-    if (!el || busy) return;
+  const run = async (build: () => Summary, fileName: string) => {
+    if (busy) return;
     setBusy(true);
     try {
-      const { blob, pages } = await buildReportPdf(el);
+      const { blob, pages } = await buildSummaryPdf(build());
       setView(false);
       setZoom(false);
       setPdf({ file: new File([blob], fileName, { type: 'application/pdf' }), url: URL.createObjectURL(blob), pages });
-    } catch {
-      ui.toast('No se pudo generar el PDF. Inténtalo otra vez.');
+    } catch (e) {
+      // El detalle ayuda a localizar el fallo si vuelve a pasar.
+      const why = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      ui.toast(`No se pudo generar el PDF (${why.slice(0, 120)}).`);
     } finally {
       setBusy(false);
     }

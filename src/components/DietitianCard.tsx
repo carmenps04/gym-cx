@@ -1,10 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CalendarHeart, FileDown } from 'lucide-react';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import { daysUntil, dietitianPeriod, gainsInWindow, inRange, loadSessions, localDate, periodWeeks, programStart } from '../lib/report';
 import { fmtDate } from '../lib/util';
-import { PdfSummary } from './PdfSummary';
+import { buildSummary } from '../lib/summary';
 import { usePdfExport } from './PdfExport';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -31,7 +31,6 @@ export function DietitianCard() {
   const [editing, setEditing] = useState(false);
   const [date, setDate] = useState('');
   const [from, setFrom] = useState(today);
-  const pdfRef = useRef<HTMLDivElement>(null);
   const pdfx = usePdfExport();
 
   const period = appt ? dietitianPeriod(appt) : null;
@@ -107,7 +106,25 @@ export function DietitianCard() {
   const fromText = fmtDate(asMs(appt.from));
   const dateText = fmtDate(asMs(appt.date));
 
-  const exportPdf = () => pdfx.run(pdfRef.current, `Informe para el dietista - cita ${appt.date}.pdf`);
+  const exportPdf = () =>
+    pdfx.run(
+      () =>
+        buildSummary({
+          config: data.config,
+          entries: data.entries,
+          sessions,
+          weeks,
+          start: period.from,
+          end: period.to,
+          now,
+          eyebrow: 'Diario gym · Informe para el dietista',
+          title: `Del ${fromText} al ${dateText}`,
+          sub: `Cita el ${dateText} · datos hasta el ${fmtDate(dataTo - 1)} · ${es.length} ${es.length === 1 ? 'sesión' : 'sesiones'} con cuestionario · generado el ${fmtDate(now)}`,
+          totalTitle: `Progreso de cargas desde el ${fromText}`,
+          totalSub: `Última marca frente a la última vez antes del ${fromText} (o la primera dentro del periodo). Solo los ejercicios que suben.`,
+        }),
+      `Informe para el dietista - cita ${appt.date}.pdf`,
+    );
 
   return (
     <section className={`card diet${left < 0 ? ' past' : ''}`}>
@@ -141,23 +158,6 @@ export function DietitianCard() {
         </button>
       </div>
 
-      <div hidden>
-        <PdfSummary
-          ref={pdfRef}
-          config={data.config}
-          entries={data.entries}
-          sessions={sessions}
-          weeks={weeks}
-          start={period.from}
-          end={period.to}
-          now={now}
-          eyebrow="Diario gym · Informe para el dietista"
-          title={`Del ${fromText} al ${dateText}`}
-          sub={`Cita el ${dateText} · datos hasta el ${fmtDate(dataTo - 1)} · ${es.length} ${es.length === 1 ? 'sesión' : 'sesiones'} con cuestionario · generado el ${fmtDate(now)}`}
-          totalTitle={`Progreso de cargas desde el ${fromText}`}
-          totalSub={`Última marca frente a la última vez antes del ${fromText} (o la primera dentro del periodo). Solo los ejercicios que suben.`}
-        />
-      </div>
     </section>
   );
 }

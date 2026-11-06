@@ -24,7 +24,7 @@ import type { Entry, LoadDay, TreadmillRating } from '../types';
 import { calendarLinkFor } from '../lib/calendar';
 import { fmtDate, fmtLoad, fmtNum, fmtShort } from '../lib/util';
 import { Empty, PageHeader, Stat } from '../components/ui';
-import { PdfSummary } from '../components/PdfSummary';
+import { buildSummary } from '../lib/summary';
 import { BarChart, DeltaBars, LineChart, MeterRow, PASTEL, StackedBars } from '../components/charts';
 import type { DeltaItem } from '../components/charts';
 
@@ -168,7 +168,6 @@ export default function Report() {
   const { data } = useData();
   const location = useLocation();
   const pageRef = useRef<HTMLDivElement>(null);
-  const pdfRef = useRef<HTMLDivElement>(null);
   const pdfx = usePdfExport();
   const savedId = (location.state as { saved?: string } | null)?.saved;
   const [now] = useState(Date.now);
@@ -214,8 +213,26 @@ export default function Report() {
 
   const periodText = week ? `Semana ${week.n} · ${rangeText(week.from, week.to)}` : `Todo el programa, desde el ${fmtDate(start)}`;
 
-  // PDF: siempre es el resumen de todas las semanas (PdfSummary), elija la pestaña que se elija.
-  const exportPdf = () => pdfx.run(pdfRef.current, `Informe gym - todas las semanas - ${dateStamp()}.pdf`);
+  // PDF: siempre es el resumen de todas las semanas (lib/summary + lib/summaryPdf), elija la pestaña que se elija.
+  const exportPdf = () =>
+    pdfx.run(
+      () =>
+        buildSummary({
+          config: data.config,
+          entries: data.entries,
+          sessions,
+          weeks,
+          start,
+          end,
+          now,
+          eyebrow: 'Diario gym · Informe',
+          title: `Programa completo · semanas 1–${lastN}`,
+          sub: `Del ${fmtDate(start)} al ${fmtDate(now)} · ${allCount} ${allCount === 1 ? 'sesión' : 'sesiones'} con cuestionario · generado el ${fmtDate(now)}`,
+          totalTitle: 'Progreso de cargas en todo el programa',
+          totalSub: 'Última marca frente a la de antes de empezar el programa (o la primera dentro de él). Solo los ejercicios que suben.',
+        }),
+      `Informe gym - todas las semanas - ${dateStamp()}.pdf`,
+    );
   const pdfDialog = pdfx.dialog;
   const pdfBusy = pdfx.busy;
   const end = Math.max(weeks[weeks.length - 1].to, now + 1);
@@ -256,23 +273,6 @@ export default function Report() {
         </section>
       )}
       {tabs}
-      <div hidden>
-        <PdfSummary
-          ref={pdfRef}
-          config={data.config}
-          entries={data.entries}
-          sessions={sessions}
-          weeks={weeks}
-          start={start}
-          end={end}
-          now={now}
-          eyebrow="Diario gym · Informe"
-          title={`Programa completo · semanas 1–${lastN}`}
-          sub={`Del ${fmtDate(start)} al ${fmtDate(now)} · ${allCount} ${allCount === 1 ? 'sesión' : 'sesiones'} con cuestionario · generado el ${fmtDate(now)}`}
-          totalTitle="Progreso de cargas en todo el programa"
-          totalSub="Última marca frente a la de antes de empezar el programa (o la primera dentro de él). Solo los ejercicios que suben."
-        />
-      </div>
     </>
   );
 

@@ -517,29 +517,6 @@ details.more[open] > summary::before { transform: rotate(90deg); }
 .tm-seg-head { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
 .tm-seg-title { font-size: var(--fs-foot); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
-/* ------------------------------------------------------------------ PDF generado en la app (mismo aspecto que la impresión) */
-.pdf-render {
-  position: fixed; left: -10000px; top: 0; pointer-events: none; z-index: -1;
-  --bg: #ffffff; --surface: #ffffff; --surface-2: #f4f6f1; --line: #dfe3d8; --text: #1f2420; --muted: #5d6459;
-  --accent: #a8d38a; --accent-ink: #1d3311; --accent-text: #4a7a2b; --accent-soft: #edf6e4; --ok: #4a7a2b;
-  --line-1: #4a7a2b; --c2: #d07a4f; --c3: #4f86c2;
-  --warn: #9a6a12; --danger: #b3392f; --danger-soft: #fbe4e1; --shadow: none; color-scheme: light;
-  --fs-large: 23px; --fs-title: 17px; --fs-headline: 15px; --fs-body: 14px; --fs-sub: 13.5px; --fs-foot: 12px; --fs-cap: 11.5px;
-  background: #fff; color: var(--text); font-size: 14px;
-}
-.pdf-render .page { gap: 0; }
-.pdf-render .overlay, .pdf-render .tabs, .pdf-render .week-tabs, .pdf-render .saved-banner, .pdf-render .page-header, .pdf-render .pdf-btn, .pdf-render .no-print, .pdf-render .hint.center { display: none !important; }
-.pdf-render .print-only { display: block; }
-.pdf-render .print-head { border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
-.pdf-render .print-head h1 { font-size: 23px; margin: 4px 0; }
-.pdf-render .print-head p { color: var(--muted); font-size: 12.5px; }
-.pdf-render .print-head .print-app { color: var(--accent-text); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11.5px; }
-.pdf-render .card { box-shadow: none; border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; gap: 10px; background: #fff; }
-.pdf-render .chart { max-width: 400px; margin: 0 auto; width: 100%; }
-.pdf-render .chart .tick, .pdf-render .chart .bar-val { font-size: 10px; }
-.pdf-render .stat { padding: 9px 4px; min-height: 0; }
-.pdf-render .stat-value { font-size: 20px; }
-.pdf-render .list.compact a { text-decoration: none; color: var(--text); font-weight: 600; }
 .pdf-actions { grid-template-columns: 1fr; }
 .pdf-actions .btn { gap: 8px; }
 
@@ -561,28 +538,9 @@ details.more[open] > summary::before { transform: rotate(90deg); }
 .pdf-viewer-pages.zoom img { width: 200%; max-width: none; flex: none; }
 .pdf-viewer-hint { font-size: var(--fs-cap); color: var(--muted); text-align: center; align-self: stretch; }
 
-/* ------------------------------------------------------------------ Resumen de todas las semanas (solo PDF) */
-.sum-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.sum-table th { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; padding: 0 4px 6px; border-bottom: 1px solid var(--line); }
-.sum-table td { text-align: center; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.sum-table th:first-child, .sum-table td:first-child { text-align: left; }
-.sum-table td small { display: block; font-size: 10.5px; color: var(--muted); }
-.sum-table tr.sum-off td { color: var(--muted); }
-.sum-table tr.sum-total td { border-bottom: 0; border-top: 2px solid var(--accent); background: var(--surface-2); font-weight: 600; }
-.sum-gains li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
-.sum-gains li:first-child { border-top: 0; }
-.sum-gain-name { font-weight: 600; }
-.sum-gain-load { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.sum-gain-delta { color: var(--accent-text); white-space: nowrap; min-width: 62px; text-align: right; }
-.sum-empty, .sum-rest { font-size: 12.5px; color: var(--muted); }
-.sum-week-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.pdf-render .sum-week { padding: 12px 18px; gap: 6px; }
-.pdf-render .sum-foot { border-top: 0; padding: 0 4px; }
-
-/* Cita con el dietista (inicio) y resumen en frases del PDF */
+/* Cita con el dietista (inicio) */
 .card.diet { gap: 12px; }
 .diet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .diet-head .h3 { font-size: var(--fs-title); margin-top: 2px; }
 .diet-sub { margin-top: 0; }
 .diet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.sum-lines { margin: 0; padding-left: 18px; list-style: disc; display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.45; }
