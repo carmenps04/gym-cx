@@ -88,13 +88,14 @@ export const NB_OLD_NAMES: Record<string, string> = {
 
 /**
  * Nombres que muestra la pantalla «Corrige tu ejercicio» y que no coinciden con los de arriba (comprobados con
- * capturas del 03/11/2026). Los datos guardados siguen usando el nombre de NB_NAMES, así que estos solo sirven
+ * capturas del 03/11/2026 y del 06/11/2026). Los datos guardados siguen usando el nombre de NB_NAMES, así que estos solo sirven
  * para reconocer el ejercicio al leer una captura.
  */
 export const NB_SCREEN_NAMES: Record<string, string[]> = {
   'gemelo-sentado': ['Elevación de talones sentado'],
   'pallof-press': ['Pallof press'],
   'peso-muerto': ['Peso muerto convencional'],
+  'smith-machine-front-squat': ['Sentadilla frontal en Smith', 'Sentadilla frontal en máquina Smith'],
   'smith-machine-bench-press': ['Press de banca en máquina Smith', 'Press banca en máquina Smith'],
   'smith-machine-seated-overhead-press': ['Press de hombros sentado en máquina Smith'],
 };

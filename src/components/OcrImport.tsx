@@ -30,8 +30,8 @@ export interface OcrApplied {
   reps: number | null;
 }
 
-const toRows = (xs: OcrExercise[], targets: string[]): Row[] => {
-  const to = assignTargets(xs.map((e) => e.name), targets);
+const toRows = (xs: OcrExercise[], targets: string[], known: string[]): Row[] => {
+  const to = assignTargets(xs.map((e) => e.name), targets, known);
   return xs.map((e, i) => ({
     include: e.avg != null,
     name: e.name,
@@ -62,7 +62,7 @@ export function OcrImport({ known, targets, onApply }: { known: string[]; target
     setRawText(texts.join('\n\n'));
     // Solo ejercicios con series leídas: los nombres sueltos (menús, listas de la rutina…) se descartan.
     const found = parseScreenshots(texts, known, (n) => resolveNbName(n, known)).filter((e) => e.sets.length > 0);
-    setRows(toRows(found, targets));
+    setRows(toRows(found, targets, known));
     setStage('review');
   };
 

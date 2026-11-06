@@ -143,3 +143,13 @@ test('capturas del 03/11/2026: nombres nuevos de Nivel Bestia, plancha en segund
     ],
   );
 });
+
+test('capturas del 06/11/2026: ejercicios parecidos pero distintos no se cruzan', async () => {
+  const { assignTargets } = await import('../src/lib/ocrMatch.ts');
+  const { resolveNbName } = await import('../src/lib/nivelbestia.ts');
+  const day = ['Peso muerto', 'Prensa de piernas', 'Curl femoral tumbado', 'Sentadilla frontal en multipower'];
+  const known = [...day, 'Curl femoral sentado'];
+  const read = ['Peso muerto rumano', 'Prensa de piernas', 'Curl femoral sentado', 'Sentadilla frontal en Smith'].map((n) => resolveNbName(n, known));
+  assert.deepEqual(read, ['Peso muerto rumano', 'Prensa de piernas', 'Curl femoral sentado', 'Sentadilla frontal en multipower']);
+  assert.deepEqual(assignTargets(read, day, known), [null, 1, null, 3]);
+});

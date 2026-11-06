@@ -34,15 +34,26 @@ export function nameScore(a: string, b: string): number {
 
 const MIN_SCORE = 0.6;
 
+function distinct(a: string, b: string, isKnown: Set<string>): boolean {
+  const ca = nbCode(a);
+  const cb = nbCode(b);
+  if (ca && cb) return ca !== cb;
+  return isKnown.has(normName(a)) && isKnown.has(normName(b));
+}
+
 /**
  * Para cada nombre leído, el índice del ejercicio de la sesión al que va (o null si es nuevo).
  * Se asignan primero las parejas más claras, y ningún ejercicio de la sesión se usa dos veces.
  */
-export function assignTargets(read: string[], targets: string[]): (number | null)[] {
+export function assignTargets(read: string[], targets: string[], known: string[] = []): (number | null)[] {
   const pairs: { r: number; t: number; s: number }[] = [];
+  const isKnown = new Set(known.map(normName));
   read.forEach((a, r) =>
     targets.forEach((b, t) => {
       const s = nameScore(a, b);
+      // Dos ejercicios que ya conoces por separado (historial, días o Nivel Bestia) no se cruzan aunque se
+      // parezcan: «Peso muerto rumano» nunca va a «Peso muerto», ni «Curl femoral sentado» a «tumbado».
+      if (s < 0.99 && distinct(a, b, isKnown)) return;
       if (s >= MIN_SCORE) pairs.push({ r, t, s });
     }),
   );
