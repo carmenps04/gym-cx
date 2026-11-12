@@ -195,6 +195,7 @@ export function OcrImport({ known, targets, onApply }: { known: string[]; target
                 <button type="button" className="link-btn" onClick={() => setStage('paste')}>
                   <ClipboardPaste size={16} /> ¿Se ha leído mal? Pega el texto copiado de la captura
                 </button>
+                <p className="hint">Versión de la app: {typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'desarrollo'}</p>
                 {rawText && (
                   <details className="more">
                     <summary>Ver el texto leído</summary>

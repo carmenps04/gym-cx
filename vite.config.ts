@@ -27,5 +27,11 @@ function ocrAssets(): Plugin {
 export default defineConfig({
   base: './',
   plugins: [react(), ocrAssets()],
+  // Fecha de compilación (hora de Madrid), visible en la app para saber si el móvil tiene la última versión.
+  define: {
+    __APP_VERSION__: JSON.stringify(
+      new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+    ),
+  },
   build: { chunkSizeWarningLimit: 900 },
 });
