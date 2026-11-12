@@ -153,3 +153,26 @@ test('capturas del 06/11/2026: ejercicios parecidos pero distintos no se cruzan'
   assert.deepEqual(read, ['Peso muerto rumano', 'Prensa de piernas', 'Curl femoral sentado', 'Sentadilla frontal en multipower']);
   assert.deepEqual(assignTargets(read, day, known), [null, 1, null, 3]);
 });
+
+test('nombres duplicados por las capturas se unifican en días, sesiones y cargas', async () => {
+  const { canonicalize } = await import('../src/lib/canonical.ts');
+  const day = { id: 'd', name: 'Torso', isLeg: false, exercises: ['Peso muerto', 'Press banca en multipower', 'Press militar sentado en multipower', 'Press Pallof', 'Peso muerto convencional', 'Press de banca en máquina Smith', 'Pallof press', 'Press Arnold'] };
+  const entry = {
+    id: 'e', at: 1, dayId: 'd', dayName: 'Torso', isLeg: false, kneeDuring: 0, knee24h: null,
+    exercises: [
+      { name: 'Peso muerto', kg: null, reps: null },
+      { name: 'Peso muerto convencional', kg: 30, reps: 6 },
+      { name: 'Press de banca en máquina Smith', kg: 20, reps: 10 },
+      { name: 'Press Arnold', kg: 8, reps: 12 },
+    ],
+    treadmill: { done: false, min: null, speed: null, incline: null, rating: null }, energy: null, sleepHours: null, sleepQuality: null, recovery: null, dayFeel: null, note: '', updatedAt: 1,
+  };
+  const r = canonicalize({ entries: [entry], loads: [], config: { days: [day], updatedAt: 1 } } as never);
+  assert.deepEqual(r.data.config.days[0].exercises, ['Peso muerto', 'Press banca en multipower', 'Press militar sentado en multipower', 'Press Pallof', 'Press Arnold']);
+  assert.deepEqual(r.data.entries[0].exercises.map((x) => [x.name, x.kg, x.reps]), [['Peso muerto', 30, 6], ['Press banca en multipower', 20, 10], ['Press Arnold', 8, 12]]);
+  assert.equal(r.changedDays, true);
+  assert.equal(r.changedEntries.length, 1);
+  // Una segunda pasada ya no cambia nada (no se vuelve a guardar en bucle).
+  const again = canonicalize(r.data);
+  assert.equal(again.changedDays || again.changedEntries.length > 0, false);
+});

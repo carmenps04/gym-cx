@@ -5,6 +5,7 @@ import { useAuth } from './auth';
 import { createCloudBackend, createLocalBackend, emptyData, hasContent, readLocal } from './backends';
 import type { Backend } from './backends';
 import { cloudEnabled } from '../lib/firebase';
+import { canonicalize } from '../lib/canonical';
 
 interface DataCtx {
   data: AppData;
@@ -37,9 +38,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     backend.current = b;
     const flag = uid ? `diario.migrated.${uid}` : '';
     const unsub = b.subscribe(
-      (d, info) => {
+      (raw, info) => {
+        // Un nombre por ejercicio: si había copias con el nombre de las capturas, se unifican y se guarda.
+        const c = canonicalize(raw);
+        const d = c.data;
         setData(d);
         setReady(true);
+        if (c.changedDays || c.changedEntries.length || c.changedLoads.length) {
+          const save = async () => {
+            if (c.changedDays) await b.saveConfig({ ...d.config, updatedAt: Date.now() });
+            for (const e of c.changedEntries) await b.saveEntry({ ...e, updatedAt: Date.now() });
+            if (c.changedLoads.length) await b.saveLoads(c.changedLoads);
+          };
+          save().catch((e) => setSyncError(String((e as Error)?.message ?? e)));
+        }
         // Primera vez con esta cuenta: si la nube está vacía y este dispositivo tiene datos sin cuenta, se suben.
         if (uid && info.serverEmpty && !localStorage.getItem(flag)) {
           localStorage.setItem(flag, '1');
