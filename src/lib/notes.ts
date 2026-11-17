@@ -50,6 +50,24 @@ const THEMES: { label: string; re: RegExp }[] = [
   { label: 'Lo que va bien', re: /me ha gustado|me gusto|genial|muy bien|me (he )?sentido (muy )?bien|disfrut|mejor que|motivad|con ganas/ },
 ];
 
+/** Palabras que niegan lo que viene detrás: «sin dolor», «no me duele», «no he tenido nada de dolor». */
+const NEGATORS = new Set(['sin', 'no', 'ni', 'nada', 'ningun', 'ninguna', 'ninguno', 'cero', 'tampoco', 'nunca']);
+
+/**
+ * El tema sale de verdad en la frase: al menos una mención que no está negada por alguna de las tres
+ * palabras anteriores. «Rodilla sin dolor» habla de la rodilla, pero no cuenta como dolor.
+ */
+export function affirms(re: RegExp, text: string): boolean {
+  const g = new RegExp(re.source, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = g.exec(text))) {
+    const before = text.slice(0, m.index).trim().split(/\s+/).slice(-3);
+    if (!before.some((w) => NEGATORS.has(w))) return true;
+    if (m[0].length === 0) g.lastIndex++;
+  }
+  return false;
+}
+
 /** Palabras que no identifican un ejercicio por sí solas. */
 const GENERIC = new Set(['de', 'del', 'en', 'con', 'a', 'al', 'la', 'el', 'las', 'los', 'y', 'una', 'un', 'por', 'para', 'maquina', 'polea', 'mancuerna', 'barra', 'agarre', 'mano', 'cuerda', 'sentado', 'tumbado', 'smith', 'multipower', 'neutro', 'ancho', 'z', 'press']);
 /** Zonas del cuerpo: no bastan para reconocer un ejercicio («me duele el pecho» no es «Jalón al pecho»). */
@@ -107,7 +125,7 @@ export function summarizeNotes(entries: Entry[], exerciseNames: string[], dayNam
     for (const s of sentences(e.note)) {
       const t = plain(s);
       const ws = new Set(words(s));
-      const labels = [...keys.filter((k) => mentions(k, ws)).map((k) => k.name), ...THEMES.filter((th) => th.re.test(t)).map((th) => th.label)];
+      const labels = [...keys.filter((k) => mentions(k, ws)).map((k) => k.name), ...THEMES.filter((th) => affirms(th.re, t)).map((th) => th.label)];
       const q: NoteQuote = { at: e.at, day: dayName(e), text: short(s) };
       all.push({ q, labels });
       for (const label of labels) {

@@ -55,3 +55,22 @@ test('progreso total: kg y repeticiones con signo', () => {
     { name: 'Plancha', kg: '—', reps: '+15' },
   ]);
 });
+
+test('lo negado no cuenta: «rodilla sin dolor» es rodilla, no dolor', async () => {
+  const { affirms } = await import('../src/lib/notes.ts');
+  const dolor = /dolor|duel[ea]|dolia|molest/;
+  assert.equal(affirms(dolor, 'rodilla sin dolor'), false);
+  assert.equal(affirms(dolor, 'hoy no me duele nada'), false);
+  assert.equal(affirms(dolor, 'no he tenido nada de dolor'), false);
+  assert.equal(affirms(dolor, 'sin dolor en la rodilla pero me molesta el hombro'), true);
+  assert.equal(affirms(dolor, 'no se por que pero al final me duele'), true);
+  const es = [entry('1', 3, 'Pierna', 'Rodilla sin dolor.'), entry('2', 10, 'Pierna', 'La rodilla, sin molestias.')];
+  const r = summarizeNotes(es, []);
+  assert.deepEqual(r.themes.map((t) => [t.label, t.also]), [['Rodilla', []]]);
+});
+
+test('«no tengo fuerza» sigue contando como cansancio y «no me ha gustado» no va a lo que va bien', () => {
+  const es = [entry('1', 3, 'A', 'No tengo fuerza en los brazos.'), entry('2', 4, 'A', 'Estoy sin fuerza.'), entry('3', 5, 'A', 'No me ha gustado.'), entry('4', 6, 'A', 'Tampoco me ha gustado.')];
+  const r = summarizeNotes(es, []);
+  assert.deepEqual(r.themes.map((t) => t.label), ['Cansancio o falta de fuerza']);
+});
