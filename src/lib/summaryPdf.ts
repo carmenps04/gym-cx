@@ -27,6 +27,7 @@ const C = {
   accentSoft: '#edf6e4',
   green: '#4a7a2b',
   orange: '#c0612f',
+  bar: '#a8d38a',
 };
 
 interface TextOpts {
@@ -77,10 +78,17 @@ class Painter {
     return this.pages[this.pages.length - 1].getContext('2d');
   }
 
+  /** Título de la sección en curso: si salta de página, la nueva empieza con «(continuación)». */
+  cont: string | null = null;
+
   newPage() {
     this.pdf.addPage();
     this.pages.push(this.canvasPage());
     this.y = TOP;
+    if (this.cont) {
+      this.text(`${this.cont} (continuación)`, X0, this.y + 3, { size: 8, bold: true, color: C.muted });
+      this.y += 7;
+    }
   }
 
   /** Salta de página si no caben h mm. */
@@ -185,14 +193,37 @@ class Painter {
 
 // ------------------------------------------------------------------ Bloques
 
-const BODY: TextOpts = { size: 9.5 };
 const SMALL: TextOpts = { size: 8, color: C.muted };
 
-function heading(p: Painter, title: string, minAfter = 12) {
-  p.need(9 + minAfter);
-  p.y += 3;
-  p.text(title, X0, p.y + 4.5, { size: 12, bold: true });
-  p.y += 8;
+/**
+ * Cabecera de sección: cada sección empieza en una hoja nueva (salvo la primera, que va bajo el título del
+ * informe), con una banda de color, su número y una frase que explica qué se ve.
+ */
+function section(p: Painter, n: number, title: string, sub: string, newPage = true) {
+  if (newPage) {
+    p.cont = null;
+    p.newPage();
+  } else p.y += 2;
+  const h = 12;
+  p.rect(X0, p.y, W, h, C.accentSoft, 2.5);
+  p.rect(X0, p.y, 2.2, h, C.green, 1);
+  p.dot(X0 + 10, p.y + h / 2, 3.6, C.green);
+  p.text(String(n), X0 + 10, p.y + h / 2 + 1.5, { size: 10, bold: true, color: '#ffffff', align: 'center' });
+  p.text(title, X0 + 17, p.y + h / 2 + 1.7, { size: 13, bold: true });
+  p.y += h + 2.5;
+  if (sub) {
+    p.para(sub, X0, W, SMALL);
+    p.y += 2.5;
+  }
+  p.cont = title;
+}
+
+/** Subtítulo dentro de una sección; nunca se queda solo al final de la hoja. */
+function subheading(p: Painter, title: string, minAfter = 20) {
+  p.need(8 + minAfter);
+  p.y += 2;
+  p.text(title, X0, p.y + 4, { size: 10.5, bold: true, color: C.green });
+  p.y += 7;
 }
 
 function header(p: Painter, s: Summary) {
@@ -209,17 +240,36 @@ function header(p: Painter, s: Summary) {
   p.y += 3;
 }
 
-function bullets(p: Painter, lines: string[]) {
-  const lh = BODY.size * PT * 1.45;
-  for (const l of lines) {
-    const ls = p.wrap(l, W - 5, BODY);
-    p.need(ls.length * lh);
-    p.dot(X0 + 1.3, p.y + lh * 0.5, 0.65, C.green);
-    for (const t of ls) {
-      p.text(t, X0 + 5, p.y + lh * 0.75, BODY);
-      p.y += lh;
-    }
-    p.y += 1;
+/** «Cargas: suben 3…» → recuadros de dos en dos con la etiqueta en verde y el texto debajo. */
+function tiles(p: Painter, lines: string[]) {
+  const gap = 4;
+  const tw = (W - gap) / 2;
+  const pad = 3.5;
+  const lh = 9 * PT * 1.4;
+  const items = lines.map((l) => {
+    const i = l.indexOf(':');
+    const label = i > 0 && i < 20 ? l.slice(0, i) : '';
+    const text = label ? l.slice(i + 1).trim() : l;
+    return { label, lines: p.wrap(text.charAt(0).toUpperCase() + text.slice(1), tw - pad * 2, { size: 9 }) };
+  });
+  for (let i = 0; i < items.length; i += 2) {
+    const pair = items.slice(i, i + 2);
+    const h = Math.max(...pair.map((t) => pad * 2 + (t.label ? 5 : 0) + t.lines.length * lh));
+    p.need(h + gap);
+    pair.forEach((t, j) => {
+      const x = X0 + j * (tw + gap);
+      p.rect(x, p.y, tw, h, C.soft, 2.5);
+      let y = p.y + pad;
+      if (t.label) {
+        p.text(t.label.toUpperCase(), x + pad, y + 3, { size: 7.5, bold: true, color: C.green });
+        y += 5;
+      }
+      t.lines.forEach((l) => {
+        p.text(l, x + pad, y + lh * 0.75, { size: 9 });
+        y += lh;
+      });
+    });
+    p.y += h + gap;
   }
 }
 
@@ -311,39 +361,46 @@ function chart(p: Painter, c: Chart) {
   p.y += 2;
 }
 
-/** Ejercicio | Kg | Repeticiones: cuánto ha subido cada uno en total. */
+/** Ejercicio | barra de cuánto sube | Kg | Repeticiones. */
 function gains(p: Painter, g: GainBlock) {
   if (g.rows.length === 0) {
-    p.para(g.empty, X0, W, { size: 9, color: C.muted });
+    p.para(g.empty, X0, W, { size: 9.5, color: C.muted });
     return;
   }
-  const wReps = 30;
-  const wKg = 30;
+  const wReps = 26;
+  const wKg = 26;
+  const wBar = 42;
   const xReps = X1;
   const xKg = X1 - wReps;
-  const nameW = xKg - wKg - X0 - 3;
+  const xBar = xKg - wKg - wBar;
+  const nameW = xBar - X0 - 6;
+  const maxPct = Math.max(...g.rows.map((r) => r.pct), 1);
   const drawHead = () => {
     p.rect(X0, p.y, W, 7, C.soft, 1.2);
     p.text('Ejercicio', X0 + 2, p.y + 4.7, { size: 7.5, bold: true, color: C.muted });
+    p.text('Cuánto sube', xBar, p.y + 4.7, { size: 7.5, bold: true, color: C.muted });
     p.text('Kg', xKg - 2, p.y + 4.7, { size: 7.5, bold: true, color: C.muted, align: 'right' });
     p.text('Repeticiones', xReps - 2, p.y + 4.7, { size: 7.5, bold: true, color: C.muted, align: 'right' });
     p.y += 7;
   };
-  p.need(7 + 8);
+  p.need(7 + 10);
   drawHead();
   const lh = 9.5 * PT * 1.35;
   const tone = (t: string) => (t.startsWith('+') ? C.green : t.startsWith('−') ? C.orange : C.muted);
   for (const r of g.rows) {
     const names = p.wrap(r.name, nameW, { size: 9.5, bold: true });
-    const h = names.length * lh + 3;
+    const h = Math.max(names.length * lh, 5) + 4;
     if (p.y + h > BOTTOM) {
       p.newPage();
       drawHead();
     }
-    const base = p.y + 1.5 + lh * 0.75;
-    names.forEach((n, i) => p.text(n, X0 + 2, base + i * lh, { size: 9.5, bold: true }));
-    p.text(r.kg, xKg - 2, base, { size: 9.5, bold: true, color: tone(r.kg), align: 'right' });
-    p.text(r.reps, xReps - 2, base, { size: 9.5, bold: true, color: tone(r.reps), align: 'right' });
+    const mid = p.y + h / 2;
+    const first = mid - ((names.length - 1) * lh) / 2 + 1.2;
+    names.forEach((n, i) => p.text(n, X0 + 2, first + i * lh, { size: 9.5, bold: true }));
+    p.rect(xBar, mid - 2, wBar - 4, 4, C.soft, 2);
+    p.rect(xBar, mid - 2, Math.max(2, ((wBar - 4) * Math.max(0, r.pct)) / maxPct), 4, C.bar, 2);
+    p.text(r.kg, xKg - 2, mid + 1.2, { size: 9.5, bold: true, color: tone(r.kg), align: 'right' });
+    p.text(r.reps, xReps - 2, mid + 1.2, { size: 9.5, bold: true, color: tone(r.reps), align: 'right' });
     p.y += h;
     p.line(X0, p.y, X1, p.y, C.line, 0.2);
   }
@@ -352,37 +409,59 @@ function gains(p: Painter, g: GainBlock) {
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const dayText = (at: number) => `${new Date(at).getDate()} ${MONTHS[new Date(at).getMonth()]}`;
 
-/** Comentarios: temas que se repiten, con las frases tal como se escribieron, y comentarios sueltos. */
+type Quote = { at: number; day: string; text: string };
+
+/** Recuadro de un tema: título, «también…» y frases. Nunca se parte entre dos hojas. */
+function noteBox(p: Painter, title: string, meta: string, also: string, quotes: Quote[], accent: string) {
+  const pad = 3.5;
+  const inner = W - pad * 2 - 3;
+  const lhT = 10 * PT * 1.35;
+  const lhA = 8 * PT * 1.4;
+  const lhQ = 9 * PT * 1.45;
+  const tLines = p.wrap(title, inner - p.width(meta, { size: 8.5 }) - 3, { size: 10, bold: true });
+  const aLines = also ? p.wrap(also, inner, { size: 8 }) : [];
+  const qLines = quotes.map((q) => ({ text: p.wrap(`«${q.text}»`, inner, { size: 9 }), when: `${dayText(q.at)} · ${q.day}` }));
+  const h = pad * 2 + tLines.length * lhT + aLines.length * lhA + 1.5 + qLines.reduce((t, q) => t + q.text.length * lhQ + lhA + 1.5, 0);
+  p.need(h + 4);
+  p.rect(X0, p.y, W, h, C.soft, 2.5);
+  p.rect(X0, p.y, 1.6, h, accent, 0.8);
+  const x = X0 + pad + 2;
+  let y = p.y + pad;
+  tLines.forEach((l, i) => {
+    p.text(l, x, y + lhT * 0.75, { size: 10, bold: true });
+    if (i === 0 && meta) p.text(meta, X1 - pad, y + lhT * 0.75, { size: 8.5, bold: true, color: accent, align: 'right' });
+    y += lhT;
+  });
+  aLines.forEach((l) => {
+    p.text(l, x, y + lhA * 0.75, { size: 8, color: C.muted });
+    y += lhA;
+  });
+  y += 1.5;
+  for (const q of qLines) {
+    q.text.forEach((l) => {
+      p.text(l, x, y + lhQ * 0.75, { size: 9 });
+      y += lhQ;
+    });
+    p.text(q.when, x, y + lhA * 0.75, { size: 7.5, color: C.muted });
+    y += lhA + 1.5;
+  }
+  p.y += h + 3.5;
+}
+
+/** Comentarios: un recuadro por tema que se repite y uno con los comentarios sueltos. */
 function notes(p: Painter, n: NotesSummary) {
   if (n.sessions === 0) {
-    p.para('No hay comentarios en este periodo. Se escriben al final del cuestionario.', X0, W, { size: 9, color: C.muted });
+    p.para('No hay comentarios en este periodo. Se escriben al final del cuestionario.', X0, W, { size: 9.5, color: C.muted });
     return;
   }
-  const lh = BODY.size * PT * 1.45;
-  const quote = (q: { at: number; day: string; text: string }) => {
-    const ls = p.wrap(`«${q.text}» (${dayText(q.at)}, ${q.day})`, W - 7, { size: 9 });
-    p.need(ls.length * lh);
-    ls.forEach((t) => {
-      p.text(t, X0 + 7, p.y + lh * 0.75, { size: 9 });
-      p.y += lh;
-    });
-  };
   for (const t of n.themes) {
-    p.need(lh * 2 + 2);
-    p.dot(X0 + 1.3, p.y + lh * 0.5, 0.75, C.green);
-    for (const l of p.wrap(`${t.label} · ${t.sessions} sesiones`, W - 5, { size: 9.5, bold: true })) {
-      p.text(l, X0 + 5, p.y + lh * 0.75, { size: 9.5, bold: true });
-      p.y += lh;
-    }
-    if (t.also.length) p.para(`También: ${t.also.join(', ').toLowerCase()}.`, X0 + 7, W - 7, { size: 8, color: C.muted });
-    t.quotes.forEach(quote);
-    p.y += 2;
+    noteBox(p, t.label, `${t.sessions} sesiones`, t.also.length ? `También: ${t.also.join(', ').toLowerCase()}.` : '', t.quotes, C.green);
   }
   if (n.others.length) {
-    p.need(lh * 2);
-    p.text(n.themes.length ? 'Otros comentarios' : 'Comentarios', X0, p.y + lh * 0.75, { size: 9, bold: true, color: C.muted });
-    p.y += lh;
-    n.others.forEach(quote);
+    // Los sueltos van de tres en tres: un recuadro muy largo dejaría huecos al saltar de hoja.
+    for (let i = 0; i < n.others.length; i += 3) {
+      noteBox(p, i === 0 ? (n.themes.length ? 'Otros comentarios' : 'Comentarios') : 'Otros comentarios (sigue)', '', '', n.others.slice(i, i + 3), C.muted);
+    }
   }
 }
 
@@ -401,29 +480,31 @@ export async function buildSummaryPdf(s: Summary): Promise<SummaryPdf> {
   const p = new Painter(pdf);
 
   header(p, s);
-  heading(p, 'Lo más importante');
-  bullets(p, s.lines);
-
-  heading(p, 'Tus comentarios', 16);
+  // 1. Lo más importante y tus comentarios (primera hoja).
+  section(p, 1, 'Lo más importante', '', false);
+  tiles(p, s.lines);
+  subheading(p, 'Tus comentarios', 30);
+  p.cont = 'Tus comentarios';
   p.para('Temas que se repiten en lo que escribes al final de cada sesión, con tus propias frases.', X0, W, SMALL);
-  p.y += 1.5;
+  p.y += 2.5;
   notes(p, s.notes);
 
-  heading(p, s.totalTitle, 18);
-  p.para(s.totalSub, X0, W, SMALL);
-  p.y += 1.5;
+  // 2. Progreso de cargas.
+  section(p, 2, s.totalTitle, s.totalSub);
   gains(p, s.totalGains);
-
-  heading(p, 'Resumen por semana', 25);
-  weekTable(p, s);
-
-  if (s.charts.length) {
-    heading(p, 'Evolución semanal', 50);
-    s.charts.forEach((c) => chart(p, c));
-  }
-
   p.y += 3;
   p.para(s.foot, X0, W, { size: 7.5, color: C.muted });
+
+  // 3. Resumen por semana.
+  section(p, 3, 'Resumen por semana', '');
+  weekTable(p, s);
+
+  // 4. Gráficas.
+  if (s.charts.length) {
+    section(p, 4, 'Evolución semanal', 'Medias de cada semana.');
+    s.charts.forEach((c) => chart(p, c));
+  }
+  p.cont = null;
 
   const n = pdf.getNumberOfPages();
   for (let i = 1; i <= n; i++) {

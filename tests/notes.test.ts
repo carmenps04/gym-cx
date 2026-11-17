@@ -51,8 +51,8 @@ test('progreso total: kg y repeticiones con signo', () => {
     fresh: 0,
   } as never);
   assert.deepEqual(rows, [
-    { name: 'Jalón al pecho', kg: '+10 kg', reps: '−0,5' },
-    { name: 'Plancha', kg: '—', reps: '+15' },
+    { name: 'Jalón al pecho', kg: '+10 kg', reps: '−0,5', pct: 33 },
+    { name: 'Plancha', kg: '—', reps: '+15', pct: 33 },
   ]);
 });
 

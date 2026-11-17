@@ -43,6 +43,8 @@ export interface GainRow {
   kg: string;
   /** «+1,5», «−2», «=» o «—». */
   reps: string;
+  /** Porcentaje de mejora (para la barra del PDF). */
+  pct: number;
 }
 
 export interface GainBlock {
@@ -63,7 +65,7 @@ export function signed(base: number | null, current: number | null): string {
 export function gainRows(s: GainSummary): GainRow[] {
   return s.gains.map((g) => {
     const kg = signed(g.base.kg, g.current.kg);
-    return { name: g.name, kg: kg === '—' || kg === '=' ? kg : `${kg} kg`, reps: signed(g.base.reps, g.current.reps) };
+    return { name: g.name, kg: kg === '—' || kg === '=' ? kg : `${kg} kg`, reps: signed(g.base.reps, g.current.reps), pct: Math.round(g.pct * 10) / 10 };
   });
 }
 
