@@ -6,12 +6,11 @@ import { dateStamp, usePdfExport } from '../components/PdfExport';
 import { useData } from '../state/data';
 import { useUi } from '../state/ui';
 import {
-  STALL_SESSIONS,
   feelSummary,
+  gainsInWindow,
   inRange,
   kneeSummary,
   loadSessions,
-  mean,
   programStart,
   progressInWindow,
   treadmillSummary,
@@ -19,24 +18,15 @@ import {
   weekStats,
   wellSummary,
 } from '../lib/report';
-import type { LoadStatus, WindowProgress } from '../lib/report';
 import type { Entry, LoadDay, TreadmillRating } from '../types';
 import { calendarLinkFor } from '../lib/calendar';
-import { fmtDate, fmtLoad, fmtNum, fmtShort } from '../lib/util';
+import { fmtDate, fmtNum, fmtShort } from '../lib/util';
 import { Empty, PageHeader, Stat } from '../components/ui';
-import { buildSummary } from '../lib/summary';
-import { BarChart, DeltaBars, LineChart, MeterRow, PASTEL, StackedBars } from '../components/charts';
-import type { DeltaItem } from '../components/charts';
+import { buildSummary, gainRows } from '../lib/summary';
+import { summarizeNotes } from '../lib/notes';
+import { BarChart, LineChart, MeterRow, PASTEL, StackedBars } from '../components/charts';
 
 type Sel = number | 'todo';
-
-const STATUS_LABEL: Record<LoadStatus, string> = {
-  progresa: 'Sube',
-  mantiene: 'Igual',
-  baja: 'Baja',
-  estancado: 'Estancado',
-  pocos: 'Sin referencia',
-};
 
 const RATING: { id: TreadmillRating; label: string; color: string }[] = [
   { id: 'poco', label: 'Poco exigente', color: 'var(--p-poco)' },
@@ -76,24 +66,6 @@ function Q({ n, title, answer, children, long }: { n: number; title: string; ans
       {children}
     </section>
   );
-}
-
-/** Cambio de cada ejercicio para la gráfica: en kg si cambió el peso; si no, en repeticiones. */
-function deltaItem(p: WindowProgress): DeltaItem | null {
-  if (p.status === 'pocos') return null;
-  const { base, current } = p;
-  let pct = 0;
-  let text = '=';
-  if (base.kg != null && current.kg != null && base.kg > 0 && Math.abs(current.kg - base.kg) > 1e-9) {
-    pct = ((current.kg - base.kg) / base.kg) * 100;
-    text = `${current.kg > base.kg ? '+' : '−'}${fmtNum(Math.abs(current.kg - base.kg))} kg`;
-  } else if (base.reps != null && current.reps != null && base.reps > 0 && current.reps !== base.reps) {
-    pct = ((current.reps - base.reps) / base.reps) * 100;
-    text = `${current.reps > base.reps ? '+' : '−'}${fmtNum(Math.round(Math.abs(current.reps - base.reps) * 10) / 10)} rep.`;
-  }
-  // El color sigue al estado (p. ej. un ejercicio puede subir respecto a la semana pasada y seguir sin superar su mejor marca).
-  const tone = p.status === 'progresa' ? 'up' : p.status === 'baja' ? 'down' : p.status === 'estancado' ? 'stall' : 'flat';
-  return { label: p.name, pct, text, tone };
 }
 
 /** Sesiones de la semana elegida, con opción de borrar una o la semana entera (p. ej. pruebas). */
@@ -193,6 +165,17 @@ export default function Report() {
   const prevWell = useMemo(() => wellSummary(prevEs, data.entries), [prevEs, data.entries]);
   const tm = useMemo(() => treadmillSummary(es), [es]);
   const feel = useMemo(() => feelSummary(es, data.config), [es, data.config]);
+  // Progreso acumulado: desde antes de empezar el programa hasta el final del periodo elegido.
+  const total = useMemo(() => gainsInWindow(sessions, start, to), [sessions, start, to]);
+  const notes = useMemo(
+    () =>
+      summarizeNotes(
+        es,
+        [...data.config.days.flatMap((d) => d.exercises), ...sessions.flatMap((x) => x.exercises.map((e) => e.name))],
+        (e) => data.config.days.find((d) => d.id === e.dayId)?.name ?? e.dayName,
+      ),
+    [es, data.config.days, sessions],
+  );
   const stats = useMemo(() => weekStats(data.entries, weeks), [data.entries, weeks]);
   const savedEntry = savedId ? data.entries.find((e) => e.id === savedId) : undefined;
 
@@ -227,9 +210,9 @@ export default function Report() {
           now,
           eyebrow: 'Diario gym · Informe',
           title: `Programa completo · semanas 1–${lastN}`,
-          sub: `Del ${fmtDate(start)} al ${fmtDate(now)} · ${allCount} ${allCount === 1 ? 'sesión' : 'sesiones'} con cuestionario · generado el ${fmtDate(now)}`,
-          totalTitle: 'Progreso de cargas en todo el programa',
-          totalSub: 'Última marca frente a la de antes de empezar el programa (o la primera dentro de él). Solo los ejercicios que suben.',
+          sub: `Del ${fmtDate(start)} al ${fmtDate(now)} · generado el ${fmtDate(now)}`,
+          totalTitle: 'En qué ejercicios has progresado',
+          totalSub: 'Cuánto ha subido en total cada ejercicio: de la marca de antes de empezar el programa (o la primera dentro de él) a la última. Solo los que suben.',
         }),
       `Informe gym - todas las semanas - ${dateStamp()}.pdf`,
     );
@@ -237,7 +220,6 @@ export default function Report() {
   const pdfBusy = pdfx.busy;
   const end = Math.max(weeks[weeks.length - 1].to, now + 1);
   const lastN = weeks.filter((w) => !w.future).slice(-1)[0]?.n ?? 1;
-  const allCount = inRange(data.entries, start, end).length;
 
   const header = (
     <>
@@ -254,7 +236,7 @@ export default function Report() {
         <p className="print-app">Diario gym · Informe</p>
         <h1>{periodText}</h1>
         <p>
-          Generado el {fmtDate(now)} · {es.length} {es.length === 1 ? 'sesión' : 'sesiones'} con cuestionario
+          Generado el {fmtDate(now)}
           {week ? '' : ` · semanas ${weeks[0].n}–${weeks.filter((w) => !w.future).slice(-1)[0]?.n ?? weeks[0].n}`}
         </p>
       </div>
@@ -292,22 +274,16 @@ export default function Report() {
   const weekLabels = stats.map((s) => `S${s.n}`);
 
   // ---------------------------------------------------------------- 1. Cargas
-  const by = (st: LoadStatus) => prog.filter((p) => p.status === st).map((p) => p.name);
-  const deltas = prog
-    .map(deltaItem)
-    .filter((d): d is DeltaItem => d != null)
-    .sort((a, b) => b.pct - a.pct);
+  const upTo = week ? `hasta el final de la semana ${week.n}` : 'hasta hoy';
+  const stalled = prog.filter((p) => p.status === 'estancado').map((p) => p.name);
+  const rows = gainRows(total);
   const loadAnswer =
-    prog.length === 0 ? (
-      `No hay cargas registradas en ${scope}. Se rellenan en el cuestionario, leyendo capturas o a mano.`
-    ) : deltas.length === 0 ? (
-      'Todos los ejercicios de este periodo son nuevos: hace falta otra sesión de cada uno para comparar.'
+    total.compared === 0 ? (
+      prog.length === 0 ? `No hay cargas registradas en ${scope}. Se rellenan en el cuestionario, leyendo capturas o a mano.` : 'Hace falta otra sesión de cada ejercicio para poder comparar.'
     ) : (
       <>
-        {by('progresa').length ? <>Suben: <b>{list(by('progresa'))}</b>. </> : 'Ningún ejercicio sube. '}
-        {by('estancado').length ? <>Estancados: <b>{list(by('estancado'))}</b>. </> : 'Ninguno estancado. '}
-        {by('baja').length > 0 && <>Bajan: {list(by('baja'))}. </>}
-        {by('mantiene').length > 0 && <>Igual que la vez anterior: {list(by('mantiene'))}.</>}
+        Desde que empezaste el programa {upTo}: suben <b>{rows.length}</b> de {total.compared} ejercicios.
+        {stalled.length > 0 && <> Estancados: {list(stalled)}.</>}
       </>
     );
 
@@ -376,35 +352,68 @@ export default function Report() {
       {pdfDialog}
       {header}
 
-      <Q n={1} long title="¿En qué ejercicios progresó la carga y en cuáles se estancó?" answer={loadAnswer}>
-        {deltas.length > 0 && <DeltaBars items={deltas} label="Cambio de carga por ejercicio" />}
-        {prog.length > 0 && (
-          <ul className="list plain">
-              {prog.map((p) => (
-                <li key={p.name} className="load-row">
-                  <div>
-                    <b>{p.name}</b>
-                    <div className="list-meta">
-                      {p.status === 'pocos' ? (
-                        fmtLoad(p.current.kg, p.current.reps)
-                      ) : (
-                        <>
-                          {fmtLoad(p.base.kg, p.base.reps)} ({fmtShort(p.base.at)}) → {fmtLoad(p.current.kg, p.current.reps)} ({fmtShort(p.current.at)})
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <span className={`tag ${p.status}`}>{STATUS_LABEL[p.status]}</span>
-                </li>
+      <section className="card q notes-card">
+        <div className="q-head">
+          <h2 className="h3">Tus comentarios</h2>
+        </div>
+        {notes.sessions === 0 ? (
+          <p className="card-sub">No hay comentarios en {scope}. Se escriben al final del cuestionario.</p>
+        ) : (
+          <>
+            <p className="card-sub">Temas que se repiten en lo que escribes al final de cada sesión, con tus propias frases.</p>
+            {notes.themes.map((t) => (
+              <div key={t.label} className="note-theme">
+                <h3>
+                  {t.label} <span className="muted">· {t.sessions} sesiones</span>
+                </h3>
+                {t.also.length > 0 && <p className="hint">También: {t.also.join(', ').toLowerCase()}.</p>}
+                <ul className="note-quotes">
+                  {t.quotes.map((q, i) => (
+                    <li key={i}>
+                      «{q.text}» <span className="muted">({fmtShort(q.at)}, {q.day})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {notes.others.length > 0 && (
+              <div className="note-theme">
+                <h3 className="muted">{notes.themes.length ? 'Otros comentarios' : 'Comentarios'}</h3>
+                <ul className="note-quotes">
+                  {notes.others.map((q, i) => (
+                    <li key={i}>
+                      «{q.text}» <span className="muted">({fmtShort(q.at)}, {q.day})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      <Q n={1} long title="¿En qué ejercicios has progresado?" answer={loadAnswer}>
+        {rows.length > 0 && (
+          <table className="gain-table">
+            <thead>
+              <tr>
+                <th>Ejercicio</th>
+                <th>Kg</th>
+                <th>Reps</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.name}>
+                  <td>{r.name}</td>
+                  <td className={r.kg.startsWith('+') ? 'up' : r.kg.startsWith('−') ? 'down' : ''}>{r.kg}</td>
+                  <td className={r.reps.startsWith('+') ? 'up' : r.reps.startsWith('−') ? 'down' : ''}>{r.reps}</td>
+                </tr>
               ))}
-            </ul>
+            </tbody>
+          </table>
         )}
-        {prog.length > 0 && (
-        <p className="method">
-          {week ? 'Cada ejercicio se compara con la última vez que lo hiciste antes de esta semana. ' : 'Cada ejercicio se compara con la última vez antes de empezar el programa (o con la primera dentro de él). '}
-          Se usa la carga media de cada sesión (media de las series): primero el peso y, con el mismo peso, las repeticiones. «Estancado» (naranja) = {STALL_SESSIONS} sesiones o más seguidas sin superar la mejor marca, aunque respecto a la vez anterior haya cambiado algo.
-        </p>
-        )}
+        {rows.length > 0 && <p className="method">Cuánto ha subido en total cada ejercicio, de la marca de antes de empezar el programa (o la primera) a la última. Con la carga media de cada sesión (media de las series).</p>}
       </Q>
 
       <Q n={2} title="¿Cómo evolucionó el dolor de rodilla?" answer={kneeAnswer}>
@@ -569,22 +578,6 @@ export default function Report() {
             ))}
           </div>
         )}
-        {feel.days.some((d) => d.notes.length) && (
-          <ul className="list plain compact notes">
-            {feel.days
-              .flatMap((d) => d.notes.map((x) => ({ ...x, day: d.name })))
-              .sort((a, b) => b.at - a.at)
-              .slice(0, 6)
-              .map((x) => (
-                <li key={x.at}>
-                  <span className="list-meta">
-                    {fmtShort(x.at)} · {x.day}:
-                  </span>{' '}
-                  {x.text}
-                </li>
-              ))}
-          </ul>
-        )}
       </Q>
 
       {week && (
@@ -598,11 +591,6 @@ export default function Report() {
         />
       )}
 
-      {week && es.length > 0 && (
-        <p className="hint center">
-          {es.length} {es.length === 1 ? 'sesión registrada' : 'sesiones registradas'} esta semana · sensación media {f1(mean(es.map((e) => e.dayFeel)))}/5
-        </p>
-      )}
     </div>
   );
 }

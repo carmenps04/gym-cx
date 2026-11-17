@@ -1,5 +1,6 @@
 import type { jsPDF as JsPdf } from 'jspdf';
 import type { Chart, GainBlock, Summary, TableRow } from './summary';
+import type { NotesSummary } from './notes';
 
 /**
  * Dibuja el informe resumido directamente en el PDF (texto, líneas y rectángulos), sin hacer «fotos»
@@ -25,6 +26,7 @@ const C = {
   soft: '#f4f6f1',
   accentSoft: '#edf6e4',
   green: '#4a7a2b',
+  orange: '#c0612f',
 };
 
 interface TextOpts {
@@ -39,6 +41,7 @@ function clean(s: string): string {
   return s
     .replace(/[   ]/g, ' ')
     .replace(/→/g, '>')
+    .replace(/−/g, '-')
     .replace(/≈/g, '~')
     .replace(/[^\x20-\x7e¡-ÿ–—‘’“”•…€]/g, '');
 }
@@ -220,8 +223,8 @@ function bullets(p: Painter, lines: string[]) {
   }
 }
 
-/** Anchos de la tabla semanal (mm): Semana, Ses., Rodilla, Energía, Recup., Sueño, Cinta, Suben. */
-const COLS = [26, 14, 19, 19, 19, 20, 44, 19];
+/** Anchos de la tabla semanal (mm): Semana, Rodilla, Energía, Recup., Sueño, Cinta, Suben. */
+const COLS = [28, 20, 20, 20, 22, 50, 20];
 
 function weekTable(p: Painter, s: Summary) {
   const xs: number[] = [];
@@ -308,63 +311,79 @@ function chart(p: Painter, c: Chart) {
   p.y += 2;
 }
 
-/** Ejercicio | Antes | Ahora | Sube. */
+/** Ejercicio | Kg | Repeticiones: cuánto ha subido cada uno en total. */
 function gains(p: Painter, g: GainBlock) {
   if (g.rows.length === 0) {
     p.para(g.empty, X0, W, { size: 9, color: C.muted });
-  } else {
-    const wBefore = 36;
-    const wNow = 36;
-    const wDelta = 22;
-    const xDelta = X1;
-    const xNow = X1 - wDelta - wNow;
-    const xBefore = xNow - wBefore;
-    const nameW = xBefore - X0 - 3;
-    const drawHead = () => {
-      p.text('Ejercicio', X0, p.y + 3.5, { size: 7.5, bold: true, color: C.muted });
-      p.text('Antes', xBefore, p.y + 3.5, { size: 7.5, bold: true, color: C.muted });
-      p.text('Ahora', xNow, p.y + 3.5, { size: 7.5, bold: true, color: C.muted });
-      p.text('Sube', xDelta, p.y + 3.5, { size: 7.5, bold: true, color: C.muted, align: 'right' });
-      p.y += 5;
-      p.line(X0, p.y, X1, p.y, C.line, 0.2);
-    };
-    p.need(5 + 7);
-    drawHead();
-    const lh = 9 * PT * 1.35;
-    for (const r of g.rows) {
-      const names = p.wrap(r.name, nameW, { size: 9, bold: true });
-      const h = names.length * lh + 2.4;
-      if (p.y + h > BOTTOM) {
-        p.newPage();
-        drawHead();
-      }
-      const base = p.y + 1.2 + lh * 0.75;
-      names.forEach((n, i) => p.text(n, X0, base + i * lh, { size: 9, bold: true }));
-      p.text(r.before, xBefore, base, { size: 8.5, color: C.muted });
-      p.text(r.now, xNow, base, { size: 8.5 });
-      p.text(r.delta, xDelta, base, { size: 9, bold: true, color: C.green, align: 'right' });
-      p.y += h;
-      p.line(X0, p.y, X1, p.y, C.line, 0.2);
-    }
+    return;
   }
-  if (g.rest) {
-    p.y += 1.5;
-    p.para(g.rest, X0, W, { size: 8.5, color: C.muted });
+  const wReps = 30;
+  const wKg = 30;
+  const xReps = X1;
+  const xKg = X1 - wReps;
+  const nameW = xKg - wKg - X0 - 3;
+  const drawHead = () => {
+    p.rect(X0, p.y, W, 7, C.soft, 1.2);
+    p.text('Ejercicio', X0 + 2, p.y + 4.7, { size: 7.5, bold: true, color: C.muted });
+    p.text('Kg', xKg - 2, p.y + 4.7, { size: 7.5, bold: true, color: C.muted, align: 'right' });
+    p.text('Repeticiones', xReps - 2, p.y + 4.7, { size: 7.5, bold: true, color: C.muted, align: 'right' });
+    p.y += 7;
+  };
+  p.need(7 + 8);
+  drawHead();
+  const lh = 9.5 * PT * 1.35;
+  const tone = (t: string) => (t.startsWith('+') ? C.green : t.startsWith('−') ? C.orange : C.muted);
+  for (const r of g.rows) {
+    const names = p.wrap(r.name, nameW, { size: 9.5, bold: true });
+    const h = names.length * lh + 3;
+    if (p.y + h > BOTTOM) {
+      p.newPage();
+      drawHead();
+    }
+    const base = p.y + 1.5 + lh * 0.75;
+    names.forEach((n, i) => p.text(n, X0 + 2, base + i * lh, { size: 9.5, bold: true }));
+    p.text(r.kg, xKg - 2, base, { size: 9.5, bold: true, color: tone(r.kg), align: 'right' });
+    p.text(r.reps, xReps - 2, base, { size: 9.5, bold: true, color: tone(r.reps), align: 'right' });
+    p.y += h;
+    p.line(X0, p.y, X1, p.y, C.line, 0.2);
   }
 }
 
-function weekHead(p: Painter, title: string, current: boolean) {
-  p.need(9 + 12);
-  p.y += 3;
-  p.text(title, X0, p.y + 4.5, { size: 11, bold: true });
-  if (current) {
-    const tw = p.width(title, { size: 11, bold: true });
-    const label = 'En curso';
-    const lw = p.width(label, { size: 7.5, bold: true }) + 4;
-    p.rect(X0 + tw + 3, p.y + 0.8, lw, 5, C.accentSoft, 2.5);
-    p.text(label, X0 + tw + 3 + lw / 2, p.y + 4.2, { size: 7.5, bold: true, color: C.green, align: 'center' });
+const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const dayText = (at: number) => `${new Date(at).getDate()} ${MONTHS[new Date(at).getMonth()]}`;
+
+/** Comentarios: temas que se repiten, con las frases tal como se escribieron, y comentarios sueltos. */
+function notes(p: Painter, n: NotesSummary) {
+  if (n.sessions === 0) {
+    p.para('No hay comentarios en este periodo. Se escriben al final del cuestionario.', X0, W, { size: 9, color: C.muted });
+    return;
   }
-  p.y += 8;
+  const lh = BODY.size * PT * 1.45;
+  const quote = (q: { at: number; day: string; text: string }) => {
+    const ls = p.wrap(`«${q.text}» (${dayText(q.at)}, ${q.day})`, W - 7, { size: 9 });
+    p.need(ls.length * lh);
+    ls.forEach((t) => {
+      p.text(t, X0 + 7, p.y + lh * 0.75, { size: 9 });
+      p.y += lh;
+    });
+  };
+  for (const t of n.themes) {
+    p.need(lh * 2 + 2);
+    p.dot(X0 + 1.3, p.y + lh * 0.5, 0.75, C.green);
+    for (const l of p.wrap(`${t.label} · ${t.sessions} sesiones`, W - 5, { size: 9.5, bold: true })) {
+      p.text(l, X0 + 5, p.y + lh * 0.75, { size: 9.5, bold: true });
+      p.y += lh;
+    }
+    if (t.also.length) p.para(`También: ${t.also.join(', ').toLowerCase()}.`, X0 + 7, W - 7, { size: 8, color: C.muted });
+    t.quotes.forEach(quote);
+    p.y += 2;
+  }
+  if (n.others.length) {
+    p.need(lh * 2);
+    p.text(n.themes.length ? 'Otros comentarios' : 'Comentarios', X0, p.y + lh * 0.75, { size: 9, bold: true, color: C.muted });
+    p.y += lh;
+    n.others.forEach(quote);
+  }
 }
 
 // ------------------------------------------------------------------ Documento
@@ -382,8 +401,18 @@ export async function buildSummaryPdf(s: Summary): Promise<SummaryPdf> {
   const p = new Painter(pdf);
 
   header(p, s);
-  heading(p, 'En resumen');
+  heading(p, 'Lo más importante');
   bullets(p, s.lines);
+
+  heading(p, 'Tus comentarios', 16);
+  p.para('Temas que se repiten en lo que escribes al final de cada sesión, con tus propias frases.', X0, W, SMALL);
+  p.y += 1.5;
+  notes(p, s.notes);
+
+  heading(p, s.totalTitle, 18);
+  p.para(s.totalSub, X0, W, SMALL);
+  p.y += 1.5;
+  gains(p, s.totalGains);
 
   heading(p, 'Resumen por semana', 25);
   weekTable(p, s);
@@ -391,25 +420,6 @@ export async function buildSummaryPdf(s: Summary): Promise<SummaryPdf> {
   if (s.charts.length) {
     heading(p, 'Evolución semanal', 50);
     s.charts.forEach((c) => chart(p, c));
-  }
-
-  heading(p, s.totalTitle, 18);
-  p.para(s.totalSub, X0, W, SMALL);
-  p.y += 1.5;
-  gains(p, s.totalGains);
-
-  if (s.weeks.length) {
-    p.y += 2;
-    heading(p, 'Semana a semana', 22);
-    for (const w of s.weeks) {
-      weekHead(p, w.title, w.current);
-      gains(p, w.gains);
-      if (w.best) {
-        p.y += 0.5;
-        p.para(w.best, X0, W, { size: 8.5, color: C.muted });
-      }
-      p.y += 2;
-    }
   }
 
   p.y += 3;

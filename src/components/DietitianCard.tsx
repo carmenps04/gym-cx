@@ -119,9 +119,9 @@ export function DietitianCard() {
           now,
           eyebrow: 'Diario gym · Informe para el dietista',
           title: `Del ${fromText} al ${dateText}`,
-          sub: `Cita el ${dateText} · datos hasta el ${fmtDate(dataTo - 1)} · ${es.length} ${es.length === 1 ? 'sesión' : 'sesiones'} con cuestionario · generado el ${fmtDate(now)}`,
-          totalTitle: `Progreso de cargas desde el ${fromText}`,
-          totalSub: `Última marca frente a la última vez antes del ${fromText} (o la primera dentro del periodo). Solo los ejercicios que suben.`,
+          sub: `Cita el ${dateText} · datos hasta el ${fmtDate(dataTo - 1)} · generado el ${fmtDate(now)}`,
+          totalTitle: `En qué ejercicios has progresado desde el ${fromText}`,
+          totalSub: `Cuánto ha subido en total cada ejercicio: de la última marca antes del ${fromText} (o la primera dentro del periodo) a la última. Solo los que suben.`,
         }),
       `Informe para el dietista - cita ${appt.date}.pdf`,
     );

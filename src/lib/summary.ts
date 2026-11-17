@@ -1,7 +1,9 @@
-import { feelSummary, gainsInWindow, inRange, kneeSummary, mean, treadmillSummary } from './report';
-import type { Gain, GainSummary, LoadSession, WeekRange } from './report';
-import type { Config, Entry, TreadmillRating } from '../types';
-import { fmtLoad, fmtNum, fmtShort } from './util';
+import { feelSummary, gainsInWindow, inRange, kneeSummary, mean, treadmillSummary } from './report.ts';
+import type { Gain, GainSummary, LoadSession, WeekRange } from './report.ts';
+import type { Config, Entry, TreadmillRating } from '../types.ts';
+import { fmtNum, fmtShort } from './util.ts';
+import { summarizeNotes } from './notes.ts';
+import type { NotesSummary } from './notes.ts';
 
 /**
  * Contenido del informe resumido (programa completo o periodo del dietista), sin maquetar.
@@ -37,29 +39,36 @@ function treadmillCell(es: Entry[]): string {
 
 export interface GainRow {
   name: string;
-  before: string;
-  now: string;
-  delta: string;
+  /** «+10 kg», «=» o «—» (sin peso). */
+  kg: string;
+  /** «+1,5», «−2», «=» o «—». */
+  reps: string;
 }
 
 export interface GainBlock {
   rows: GainRow[];
   /** Mensaje cuando no hay filas. */
   empty: string;
-  /** «Resto: 3 igual · 1 baja.» o ''. */
-  rest: string;
+}
+
+/** Diferencia con signo, redondeada a 0,1: «+10», «−2», «=»; «—» si falta un dato. */
+export function signed(base: number | null, current: number | null): string {
+  if (base == null || current == null) return '—';
+  const d = Math.round((current - base) * 10) / 10;
+  if (d === 0) return '=';
+  return `${d > 0 ? '+' : '−'}${fmtNum(Math.abs(d))}`;
+}
+
+/** Cuánto ha subido cada ejercicio en total: peso y repeticiones, de la marca de referencia a la última. */
+export function gainRows(s: GainSummary): GainRow[] {
+  return s.gains.map((g) => {
+    const kg = signed(g.base.kg, g.current.kg);
+    return { name: g.name, kg: kg === '—' || kg === '=' ? kg : `${kg} kg`, reps: signed(g.base.reps, g.current.reps) };
+  });
 }
 
 function gainBlock(s: GainSummary, empty: string): GainBlock {
-  const parts: string[] = [];
-  if (s.same) parts.push(`${s.same} igual`);
-  if (s.down) parts.push(`${s.down} ${s.down === 1 ? 'baja' : 'bajan'}`);
-  if (s.fresh) parts.push(`${s.fresh} sin referencia`);
-  return {
-    rows: s.gains.map((g) => ({ name: g.name, before: fmtLoad(g.base.kg, g.base.reps), now: fmtLoad(g.current.kg, g.current.reps), delta: gainText(g) })),
-    empty,
-    rest: parts.length ? `Resto: ${parts.join(' · ')}.` : '',
-  };
+  return { rows: gainRows(s), empty };
 }
 
 export interface TableRow {
@@ -85,13 +94,6 @@ export interface Chart {
   series: Series[];
 }
 
-export interface WeekBlock {
-  title: string;
-  current: boolean;
-  gains: GainBlock;
-  best: string;
-}
-
 export interface Summary {
   eyebrow: string;
   title: string;
@@ -105,7 +107,7 @@ export interface Summary {
   totalTitle: string;
   totalSub: string;
   totalGains: GainBlock;
-  weeks: WeekBlock[];
+  notes: NotesSummary;
   foot: string;
 }
 
@@ -124,15 +126,11 @@ export interface SummaryInput {
   totalSub: string;
 }
 
-/** «Semana 3 · 2–8 nov» si es del programa; si no, por fechas. */
-function weekLabel(w: WeekRange): string {
-  return w.n >= 1 ? `Semana ${w.n} · ${rangeText(w.from, w.to)}` : `Semana del ${rangeText(w.from, w.to)}`;
-}
 const weekShort = (w: WeekRange, i: number) => (w.n >= 1 ? `S${w.n}` : `${i + 1}`);
 
 export const COLORS = { green: '#4a7a2b', orange: '#d07a4f', blue: '#4f86c2' };
 
-export function buildSummary({ config, entries, sessions, weeks, start, end, now, eyebrow, title, sub, totalTitle, totalSub }: SummaryInput): Summary {
+export function buildSummary({ config, entries, sessions, weeks, start, end, eyebrow, title, sub, totalTitle, totalSub }: SummaryInput): Summary {
   const past = weeks.filter((w) => !w.future);
   const rows = past.map((w) => {
     const es = inRange(entries, w.from, w.to);
@@ -147,7 +145,6 @@ export function buildSummary({ config, entries, sessions, weeks, start, end, now
       sleepH: mean(es.map((e) => e.sleepHours)),
       sleepQ: mean(es.map((e) => e.sleepQuality)),
       tm: treadmillCell(es),
-      best: feelSummary(es, config).best,
       gains: gainsInWindow(sessions, w.from, w.to),
     };
   });
@@ -162,21 +159,11 @@ export function buildSummary({ config, entries, sessions, weeks, start, end, now
 
   // ---------------------------------------------------------------- Resumen en frases
   const lines: string[] = [];
-  const legN = all.filter((e) => e.isLeg).length;
-  // Sesiones por semana según los días transcurridos (la semana en curso no cuenta como entera).
-  const elapsedDays = (Math.min(end, now + 1) - start) / (24 * 3600_000);
-  const perWeek = elapsedDays >= 7 ? `, ${f1(all.length / (elapsedDays / 7))} por semana de media` : '';
-  lines.push(
-    all.length
-      ? `${all.length} ${all.length === 1 ? 'sesión registrada' : 'sesiones registradas'}${legN ? ` (${legN} de pierna)` : ''}${perWeek}.`
-      : 'Aún no hay sesiones registradas en este periodo.',
-  );
   if (total.compared) {
     const top = total.gains[0];
-    lines.push(
-      `Cargas: suben ${total.gains.length} de ${total.compared} ejercicios${top ? `; la mayor subida, ${top.name} (${gainText(top)})` : ''}.${total.down ? ` ${total.down} ${total.down === 1 ? 'baja' : 'bajan'}.` : ''}`,
-    );
+    lines.push(`Cargas: suben ${total.gains.length} de ${total.compared} ejercicios${top ? `; la mayor subida, ${top.name} (${gainText(top)})` : ''}.`);
   }
+  if (!lines.length) lines.push('Aún no hay datos en este periodo.');
   const kneeWeeks = rows.filter((r) => r.knee != null);
   if (allKnee.avgSession != null) {
     const first = kneeWeeks[0];
@@ -190,10 +177,12 @@ export function buildSummary({ config, entries, sessions, weeks, start, end, now
       `Descanso: ${sleepH != null ? `${f1(sleepH)} h de sueño${sleepQ != null ? ` (calidad ${f1(sleepQ)}/5)` : ''}` : 'sin datos de sueño'}; energía ${f1(energy)}/5 y recuperación ${f1(recovery)}/5.`,
     );
   }
+  const feel = feelSummary(all, config);
+  if (feel.best && feel.worst) lines.push(`Días: el que más gustó, ${feel.best.name} (${f1(feel.best.avgFeel)}/5); el que menos, ${feel.worst.name} (${f1(feel.worst.avgFeel)}/5).`);
   const tmAll = treadmillSummary(all);
   if (tmAll.sessions.length) {
     const v: Record<typeof tmAll.verdict, string> = { poco: 'casi siempre poco exigente', bien: 'casi siempre bien tolerada', mucho: 'casi siempre demasiado exigente', mixto: 'con valoraciones repartidas', pocos: 'sin valoraciones suficientes' };
-    lines.push(`Cinta: ${tmAll.sessions.length} ${tmAll.sessions.length === 1 ? 'sesión' : 'sesiones'}, ${v[tmAll.verdict]} (${f1(tmAll.avgMin)} min de media).`);
+    lines.push(`Cinta: ${v[tmAll.verdict]} (${f1(tmAll.avgMin)} min de media).`);
   }
 
   // ---------------------------------------------------------------- Gráficas
@@ -221,13 +210,12 @@ export function buildSummary({ config, entries, sessions, weeks, start, end, now
     title,
     sub,
     lines,
-    head: ['Semana', 'Ses.', 'Rodilla', 'Energía', 'Recup.', 'Sueño', 'Cinta', 'Suben'],
+    head: ['Semana', 'Rodilla', 'Energía', 'Recup.', 'Sueño', 'Cinta', 'Suben'],
     rows: rows.map((r) => ({
       label: r.w.n >= 1 ? String(r.w.n) : '·',
       sub: rangeText(r.w.from, r.w.to),
       off: !r.hasData,
       cells: [
-        String(r.es.length || '—'),
         f1(r.knee),
         f1(r.energy),
         f1(r.recovery),
@@ -240,7 +228,7 @@ export function buildSummary({ config, entries, sessions, weeks, start, end, now
       label: 'Total',
       sub: '',
       off: false,
-      cells: [String(all.length), f1(allKnee.avgSession), f1(energy), f1(recovery), sleepH == null ? '—' : `${f1(sleepH)} h`, treadmillCell(all), total.compared ? `${total.gains.length}/${total.compared}` : '—'],
+      cells: [f1(allKnee.avgSession), f1(energy), f1(recovery), sleepH == null ? '—' : `${f1(sleepH)} h`, treadmillCell(all), total.compared ? `${total.gains.length}/${total.compared}` : '—'],
     },
     tableNote:
       'Medias de la semana. Rodilla 0–10 (sesiones de pierna, media de durante y 24 h); energía y recuperación 1–5. Cinta: valoración más repetida (n.º de sesiones). Suben: ejercicios que mejoran / ejercicios que se pueden comparar.',
@@ -248,17 +236,11 @@ export function buildSummary({ config, entries, sessions, weeks, start, end, now
     totalTitle,
     totalSub,
     totalGains: gainBlock(total, 'Ningún ejercicio supera todavía su marca de referencia.'),
-    weeks: rows
-      .filter((r) => r.hasData)
-      .map((r) => ({
-        title: weekLabel(r.w),
-        current: r.w.current,
-        gains:
-          r.gains.compared === 0 && r.gains.fresh > 0
-            ? { rows: [], rest: '', empty: `Primeras marcas de ${r.gains.fresh} ${r.gains.fresh === 1 ? 'ejercicio' : 'ejercicios'}: sirven de referencia para las semanas siguientes.` }
-            : gainBlock(r.gains, r.gains.compared ? 'Ningún ejercicio sube respecto a la vez anterior.' : 'Sin cargas registradas esta semana.'),
-        best: r.best ? `Día que más gustó: ${r.best.name} (${f1(r.best.avgFeel)}/5).` : '',
-      })),
-    foot: `En cada semana, cada ejercicio se compara con la última vez que se hizo antes de esa semana. Se usa la carga media de la sesión (media de las series): primero el peso y, con el mismo peso, las repeticiones. Última sesión incluida: ${all.length ? fmtShort(all[all.length - 1].at) : '—'}.`,
+    notes: summarizeNotes(
+      all,
+      [...config.days.flatMap((d) => d.exercises), ...sessions.flatMap((x) => x.exercises.map((e) => e.name))],
+      (e) => config.days.find((d) => d.id === e.dayId)?.name ?? e.dayName,
+    ),
+    foot: `Cargas: se usa la carga media de cada sesión (media de las series); un ejercicio sube si sube el peso o, con el mismo peso, las repeticiones. Última sesión incluida: ${all.length ? fmtShort(all[all.length - 1].at) : '—'}.`,
   };
 }
