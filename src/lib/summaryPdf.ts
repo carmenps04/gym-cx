@@ -241,17 +241,36 @@ function header(p: Painter, s: Summary) {
   p.y += 3;
 }
 
-function bullets(p: Painter, lines: string[]) {
-  const lh = BODY.size * PT * 1.45;
-  for (const l of lines) {
-    const ls = p.wrap(l, W - 5, BODY);
-    p.need(ls.length * lh);
-    p.dot(X0 + 1.3, p.y + lh * 0.5, 0.65, C.green);
-    for (const t of ls) {
-      p.text(t, X0 + 5, p.y + lh * 0.75, BODY);
-      p.y += lh;
-    }
-    p.y += 1;
+/** «Cargas: suben 3…» → recuadros de dos en dos con la etiqueta en verde y el texto debajo. */
+function tiles(p: Painter, lines: string[]) {
+  const gap = 4;
+  const tw = (W - gap) / 2;
+  const pad = 3.5;
+  const lh = 9 * PT * 1.4;
+  const items = lines.map((l) => {
+    const i = l.indexOf(':');
+    const label = i > 0 && i < 20 ? l.slice(0, i) : '';
+    const text = label ? l.slice(i + 1).trim() : l;
+    return { label, lines: p.wrap(text.charAt(0).toUpperCase() + text.slice(1), tw - pad * 2, { size: 9 }) };
+  });
+  for (let i = 0; i < items.length; i += 2) {
+    const pair = items.slice(i, i + 2);
+    const h = Math.max(...pair.map((t) => pad * 2 + (t.label ? 5 : 0) + t.lines.length * lh));
+    p.need(h + gap);
+    pair.forEach((t, j) => {
+      const x = X0 + j * (tw + gap);
+      p.rect(x, p.y, tw, h, C.soft, 2.5);
+      let y = p.y + pad;
+      if (t.label) {
+        p.text(t.label.toUpperCase(), x + pad, y + 3, { size: 7.5, bold: true, color: C.green });
+        y += 5;
+      }
+      t.lines.forEach((l) => {
+        p.text(l, x + pad, y + lh * 0.75, { size: 9 });
+        y += lh;
+      });
+    });
+    p.y += h + gap;
   }
 }
 
@@ -443,7 +462,7 @@ export async function buildSummaryPdf(s: Summary): Promise<SummaryPdf> {
   header(p, s);
   // 1. Lo más importante y tus comentarios (primera hoja).
   section(p, 1, 'Lo más importante', '', false);
-  bullets(p, s.lines);
+  tiles(p, s.lines);
   subheading(p, 'Tus comentarios', 30);
   p.cont = 'Tus comentarios';
   p.para('Temas que se repiten en lo que escribes al final de cada sesión, con tus propias frases.', X0, W, SMALL);
