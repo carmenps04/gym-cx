@@ -193,6 +193,7 @@ class Painter {
 
 // ------------------------------------------------------------------ Bloques
 
+const BODY: TextOpts = { size: 9.5 };
 const SMALL: TextOpts = { size: 8, color: C.muted };
 
 /**
@@ -240,36 +241,17 @@ function header(p: Painter, s: Summary) {
   p.y += 3;
 }
 
-/** «Cargas: suben 3…» → recuadros de dos en dos con la etiqueta en verde y el texto debajo. */
-function tiles(p: Painter, lines: string[]) {
-  const gap = 4;
-  const tw = (W - gap) / 2;
-  const pad = 3.5;
-  const lh = 9 * PT * 1.4;
-  const items = lines.map((l) => {
-    const i = l.indexOf(':');
-    const label = i > 0 && i < 20 ? l.slice(0, i) : '';
-    const text = label ? l.slice(i + 1).trim() : l;
-    return { label, lines: p.wrap(text.charAt(0).toUpperCase() + text.slice(1), tw - pad * 2, { size: 9 }) };
-  });
-  for (let i = 0; i < items.length; i += 2) {
-    const pair = items.slice(i, i + 2);
-    const h = Math.max(...pair.map((t) => pad * 2 + (t.label ? 5 : 0) + t.lines.length * lh));
-    p.need(h + gap);
-    pair.forEach((t, j) => {
-      const x = X0 + j * (tw + gap);
-      p.rect(x, p.y, tw, h, C.soft, 2.5);
-      let y = p.y + pad;
-      if (t.label) {
-        p.text(t.label.toUpperCase(), x + pad, y + 3, { size: 7.5, bold: true, color: C.green });
-        y += 5;
-      }
-      t.lines.forEach((l) => {
-        p.text(l, x + pad, y + lh * 0.75, { size: 9 });
-        y += lh;
-      });
-    });
-    p.y += h + gap;
+function bullets(p: Painter, lines: string[]) {
+  const lh = BODY.size * PT * 1.45;
+  for (const l of lines) {
+    const ls = p.wrap(l, W - 5, BODY);
+    p.need(ls.length * lh);
+    p.dot(X0 + 1.3, p.y + lh * 0.5, 0.65, C.green);
+    for (const t of ls) {
+      p.text(t, X0 + 5, p.y + lh * 0.75, BODY);
+      p.y += lh;
+    }
+    p.y += 1;
   }
 }
 
@@ -409,59 +391,38 @@ function gains(p: Painter, g: GainBlock) {
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const dayText = (at: number) => `${new Date(at).getDate()} ${MONTHS[new Date(at).getMonth()]}`;
 
-type Quote = { at: number; day: string; text: string };
-
-/** Recuadro de un tema: título, «también…» y frases. Nunca se parte entre dos hojas. */
-function noteBox(p: Painter, title: string, meta: string, also: string, quotes: Quote[], accent: string) {
-  const pad = 3.5;
-  const inner = W - pad * 2 - 3;
-  const lhT = 10 * PT * 1.35;
-  const lhA = 8 * PT * 1.4;
-  const lhQ = 9 * PT * 1.45;
-  const tLines = p.wrap(title, inner - p.width(meta, { size: 8.5 }) - 3, { size: 10, bold: true });
-  const aLines = also ? p.wrap(also, inner, { size: 8 }) : [];
-  const qLines = quotes.map((q) => ({ text: p.wrap(`«${q.text}»`, inner, { size: 9 }), when: `${dayText(q.at)} · ${q.day}` }));
-  const h = pad * 2 + tLines.length * lhT + aLines.length * lhA + 1.5 + qLines.reduce((t, q) => t + q.text.length * lhQ + lhA + 1.5, 0);
-  p.need(h + 4);
-  p.rect(X0, p.y, W, h, C.soft, 2.5);
-  p.rect(X0, p.y, 1.6, h, accent, 0.8);
-  const x = X0 + pad + 2;
-  let y = p.y + pad;
-  tLines.forEach((l, i) => {
-    p.text(l, x, y + lhT * 0.75, { size: 10, bold: true });
-    if (i === 0 && meta) p.text(meta, X1 - pad, y + lhT * 0.75, { size: 8.5, bold: true, color: accent, align: 'right' });
-    y += lhT;
-  });
-  aLines.forEach((l) => {
-    p.text(l, x, y + lhA * 0.75, { size: 8, color: C.muted });
-    y += lhA;
-  });
-  y += 1.5;
-  for (const q of qLines) {
-    q.text.forEach((l) => {
-      p.text(l, x, y + lhQ * 0.75, { size: 9 });
-      y += lhQ;
-    });
-    p.text(q.when, x, y + lhA * 0.75, { size: 7.5, color: C.muted });
-    y += lhA + 1.5;
-  }
-  p.y += h + 3.5;
-}
-
-/** Comentarios: un recuadro por tema que se repite y uno con los comentarios sueltos. */
+/** Comentarios: temas que se repiten, con las frases tal como se escribieron, y comentarios sueltos. */
 function notes(p: Painter, n: NotesSummary) {
   if (n.sessions === 0) {
-    p.para('No hay comentarios en este periodo. Se escriben al final del cuestionario.', X0, W, { size: 9.5, color: C.muted });
+    p.para('No hay comentarios en este periodo. Se escriben al final del cuestionario.', X0, W, { size: 9, color: C.muted });
     return;
   }
+  const lh = BODY.size * PT * 1.45;
+  const quote = (q: { at: number; day: string; text: string }) => {
+    const ls = p.wrap(`«${q.text}» (${dayText(q.at)}, ${q.day})`, W - 7, { size: 9 });
+    p.need(ls.length * lh);
+    ls.forEach((t) => {
+      p.text(t, X0 + 7, p.y + lh * 0.75, { size: 9 });
+      p.y += lh;
+    });
+  };
   for (const t of n.themes) {
-    noteBox(p, t.label, `${t.sessions} sesiones`, t.also.length ? `También: ${t.also.join(', ').toLowerCase()}.` : '', t.quotes, C.green);
+    // El título del tema nunca se queda solo al final de la hoja: va con su primera frase.
+    p.need(lh * 2 + p.wrap(`«${t.quotes[0]?.text ?? ''}»`, W - 7, { size: 9 }).length * lh + 2);
+    p.dot(X0 + 1.3, p.y + lh * 0.5, 0.75, C.green);
+    for (const l of p.wrap(`${t.label} · ${t.sessions} sesiones`, W - 5, { size: 9.5, bold: true })) {
+      p.text(l, X0 + 5, p.y + lh * 0.75, { size: 9.5, bold: true });
+      p.y += lh;
+    }
+    if (t.also.length) p.para(`También: ${t.also.join(', ').toLowerCase()}.`, X0 + 7, W - 7, { size: 8, color: C.muted });
+    t.quotes.forEach(quote);
+    p.y += 2;
   }
   if (n.others.length) {
-    // Los sueltos van de tres en tres: un recuadro muy largo dejaría huecos al saltar de hoja.
-    for (let i = 0; i < n.others.length; i += 3) {
-      noteBox(p, i === 0 ? (n.themes.length ? 'Otros comentarios' : 'Comentarios') : 'Otros comentarios (sigue)', '', '', n.others.slice(i, i + 3), C.muted);
-    }
+    p.need(lh * 2);
+    p.text(n.themes.length ? 'Otros comentarios' : 'Comentarios', X0, p.y + lh * 0.75, { size: 9, bold: true, color: C.muted });
+    p.y += lh;
+    n.others.forEach(quote);
   }
 }
 
@@ -482,7 +443,7 @@ export async function buildSummaryPdf(s: Summary): Promise<SummaryPdf> {
   header(p, s);
   // 1. Lo más importante y tus comentarios (primera hoja).
   section(p, 1, 'Lo más importante', '', false);
-  tiles(p, s.lines);
+  bullets(p, s.lines);
   subheading(p, 'Tus comentarios', 30);
   p.cont = 'Tus comentarios';
   p.para('Temas que se repiten en lo que escribes al final de cada sesión, con tus propias frases.', X0, W, SMALL);
