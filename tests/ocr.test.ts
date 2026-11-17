@@ -176,3 +176,49 @@ test('nombres duplicados por las capturas se unifican en días, sesiones y carga
   const again = canonicalize(r.data);
   assert.equal(again.changedDays || again.changedEntries.length > 0, false);
 });
+
+test('capturas del 17/11/2026: el día con nombres duplicados se unifica y cada carga va a su ejercicio', async () => {
+  const { canonicalize } = await import('../src/lib/canonical.ts');
+  const { parseScreenshots } = await import('../src/lib/ocrParse.ts');
+  const { resolveNbName, NB_NAMES } = await import('../src/lib/nivelbestia.ts');
+  const { assignTargets } = await import('../src/lib/ocrMatch.ts');
+  // Día tal como quedó: los nombres de la copia de Nivel Bestia y, añadidos al final, los de capturas anteriores.
+  const day = {
+    id: 'd', name: 'Espalda', isLeg: false,
+    exercises: ['Jalón al pecho', 'Jalón agarre neutro', 'Remo agarre neutro en máquina', 'Remo con mancuerna', 'Curl martillo en polea con cuerda', 'Face pull en máquina', 'Curl predicador', 'Curl martillo a una mano', 'Remo en máquina agarre neutro', 'Curl predicador con barra Z', 'Remo con mancuerna a una mano', 'Face pull con cuerda'],
+  };
+  const { data } = canonicalize({ entries: [], loads: [], config: { days: [day], updatedAt: 1 } } as never);
+  const names = data.config.days[0].exercises;
+  assert.deepEqual(names, ['Jalón al pecho', 'Jalón agarre neutro', 'Remo agarre neutro en máquina', 'Remo con mancuerna', 'Curl martillo en polea con cuerda', 'Face pull en máquina', 'Curl predicador', 'Curl martillo a una mano']);
+  // Texto real devuelto por el lector con las capturas (sin la cabecera ni el menú).
+  const screen = (name: string, header: string, rows: string) => `€ Volver\nCorrige tu ejercicio\n${name}\nSerie ${header}\n${rows}\nQuitar última serie Añadir serie\nCancelar Guardar cambios`;
+  const texts = [
+    screen('Curl martillo en polea con cuerda', 'Kg (opcional) Repeticiones', '1 10 11\n2 10 10\n3 10 10'),
+    screen('Jalón al pecho', 'Kg (opcional) Repeticiones', '1 35 10\n2 35 10\n3 35 10\n4 35 8'),
+    screen('Jalón agarre neutro', 'Kg (opcional) Repeticiones', '1 30 12\n2 30 11\n3 30 12'),
+    screen('Remo con mancuerna a una mano', 'Kg por lado (opcional) Repeticiones', '1 10 12\n2 10 12\n3 10 12'),
+    screen('Curl martillo a una mano', 'Kg por lado (opcional) Repeticiones', '1 8 12\n2 8 12'),
+    screen('Face pull con cuerda', 'Kg (opcional) Repeticiones', '1 12.5 15\n2 12.5 15\n3 15 15'),
+    screen('Remo en máquina agarre neutro', 'Kg (opcional) Repeticiones', '1 35 10\n2 35 10\n3 35 10\n4 35 10'),
+  ];
+  const known = [...names, ...Object.values(NB_NAMES)];
+  const read = parseScreenshots(texts, known, (n) => resolveNbName(n, known)).filter((e) => e.sets.length > 0);
+  const to = assignTargets(read.map((e) => e.name), names, known);
+  assert.deepEqual(
+    read.map((e, i) => [to[i] == null ? null : names[to[i] as number], e.avg?.kg ?? null, e.avg?.reps]),
+    [
+      ['Curl martillo en polea con cuerda', 10, 10.3],
+      ['Jalón al pecho', 35, 9.5],
+      ['Jalón agarre neutro', 30, 11.7],
+      ['Remo con mancuerna', 10, 12],
+      ['Curl martillo a una mano', 8, 12],
+      ['Face pull en máquina', 13.3, 15],
+      ['Remo agarre neutro en máquina', 35, 10],
+    ],
+  );
+});
+
+test('un nombre idéntico gana siempre a otro con las mismas palabras en distinto orden', async () => {
+  const { assignTargets } = await import('../src/lib/ocrMatch.ts');
+  assert.deepEqual(assignTargets(['Prensa inclinada nueva'], ['Prensa nueva inclinada', 'Prensa inclinada nueva']), [1]);
+});

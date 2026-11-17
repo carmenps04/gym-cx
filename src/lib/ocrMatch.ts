@@ -19,7 +19,11 @@ function tokens(s: string): string[] {
 
 const nbCode = nbCodeOf;
 
-/** Parecido de 0 a 1 entre el nombre leído y el de la sesión. */
+/**
+ * Parecido de 0 a 1 entre el nombre leído y el de la sesión. Orden de preferencia: nombre idéntico (1),
+ * mismo ejercicio de Nivel Bestia (0,99) y, como mucho 0,98, parecido por palabras. Así un nombre con las
+ * mismas palabras en otro orden («Remo agarre neutro en máquina») nunca empata con el idéntico.
+ */
 export function nameScore(a: string, b: string): number {
   if (normName(a) === normName(b)) return 1;
   const ca = nbCode(a);
@@ -29,7 +33,7 @@ export function nameScore(a: string, b: string): number {
   if (!x.length || !y.size) return 0;
   const common = new Set(x.filter((w) => y.has(w))).size;
   const byWords = common === 0 ? 0 : 0.5 * (common / Math.max(new Set(x).size, y.size)) + 0.5 * (common / Math.min(new Set(x).size, y.size));
-  return Math.max(byWords, similarity(a, b));
+  return Math.min(0.98, Math.max(byWords, similarity(a, b)));
 }
 
 const MIN_SCORE = 0.6;
